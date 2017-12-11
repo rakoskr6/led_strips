@@ -27,7 +27,7 @@ void setup() {
   PIN_SETUP;
   DATA_000;
   delayMicroseconds(20);
-  Serial.begin(9600);
+  Serial.begin(115200); // was 9600
   pinMode(13, OUTPUT);
 
   uint32_t blank[10] = {0,0,0,0,0,0,0,0,0,0};
@@ -48,6 +48,9 @@ void loop() {
     pinNumc = serialBuff[0];
     //pinNum = (int)strtol(pinNumc,NULL,10);
     pinNum = (int)pinNumc - '0';
+
+    Serial.write(serialBuff,62);
+    Serial.write("\n",1);
     
     if (DEBUG) {
       Serial.write("Send to pin ");
@@ -79,7 +82,7 @@ void loop() {
     sendStrip(serialPattern,10,pinNum);
 
   }
-  delay(200); // give time to send serial (idk if this is necessary)
+  //delay(20); // give time to send serial (idk if this is necessary)
 
 }
 
