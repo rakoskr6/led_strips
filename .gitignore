@@ -1,3 +1,6 @@
+# Garbage that kyle didn't add
+arduino_code/build_uno/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
