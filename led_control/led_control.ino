@@ -15,175 +15,156 @@ void sendDataD6(uint32_t data);
 void sendDataD5(uint32_t data);
 void sendDataD3(uint32_t data);
 
-int sendStrip(uint32_t stripData, int pin);
 
-
-
-
+int sendStrip(uint32_t *stripData, int stripSize, int pin);
 
 void setup() {
-  // put your setup code here, to run once:
-  //pinMode(13,OUTPUT);
-  PIN_SETUP;
-  DATA_000;
-  delayMicroseconds(20);
-  Serial.begin(115200); // was 9600
-  pinMode(13, OUTPUT);
+    // put your setup code here, to run once:
+    //pinMode(13,OUTPUT);
+    PIN_SETUP;
+    DATA_000;
+    delayMicroseconds(20);
+    Serial.begin(115200); // was 9600
+    pinMode(13, OUTPUT);
 
-  uint32_t blank[10] = {0,0,0,0,0,0,0,0,0,0};
-  sendStrip(blank,10,6);
-  sendStrip(blank,10,5);
-  sendStrip(blank,10,3);
+    uint32_t blank[10] = {0,0,0,0,0,0,0,0,0,0};
+    sendStrip(blank,10,6);
+    sendStrip(blank,10,5);
+    sendStrip(blank,10,3);
 
 }
 
 void loop() {
-  int i = 0, j = 0, pinNum;  
-  char serialBuff[200], numBuff[7], pinNumc;
-  uint32_t serialPattern[10];
+    int i = 0, j = 0, pinNum;  
+    char serialBuff[200], numBuff[7], pinNumc;
+    uint32_t serialPattern[10];
 
-  
-  if (Serial.available() > 0) { // when you get some data
-    Serial.readBytes(serialBuff,61); // get 10 bytes in form 000000111111222222... 
-    pinNumc = serialBuff[0];
-    //pinNum = (int)strtol(pinNumc,NULL,10);
-    pinNum = (int)pinNumc - '0';
+    if (Serial.available() > 0) { // when you get some data
+        Serial.readBytes(serialBuff,41); // get 10 bytes in form 000000111111222222... 
+        pinNum = serialBuff[0];
+        //pinNum = (int)strtol(pinNumc,NULL,10);
+        //pinNum = (int)pinNumc - '0';
 
-    Serial.write(serialBuff,62);
-    Serial.write("\n",1);
-    
-    if (DEBUG) {
-      Serial.write("Send to pin ");
-      Serial.write(pinNumc);
-      Serial.write("\nthe following values: ");
-      Serial.write(&serialBuff[1],61);
-      Serial.write("\n",2);
-    }
-        
-    for (i=1; i <= 56; i += 6) {
-      numBuff[0] = serialBuff[i];
-      numBuff[1] = serialBuff[i+1];
-      numBuff[2] = serialBuff[i+2];
-      numBuff[3] = serialBuff[i+3];
-      numBuff[4] = serialBuff[i+4];
-      numBuff[5] = serialBuff[i+5];
-      numBuff[6] = '\0';
-      serialPattern[i/6] = (uint32_t)strtol(numBuff,NULL,16);
+        if (DEBUG) {
+            //Serial.printf("%x",serialBuff);
+            Serial.write("\n",1);
 
-      
-      if (DEBUG) {
-        Serial.write("Value at LED #: ");
-        Serial.write(numBuff);
-        Serial.write("\n",1);
-      }      
+            Serial.write("Send to pin ");
+            Serial.write(pinNum+'0');
+            //Serial.write("\nthe following values: ");
+            //Serial.write(&serialBuff[1],61);
+            Serial.write("\n",2);
+            for (i=0; i<10; i++) {
+                Serial.print(*((uint32_t*)(serialBuff+1+(4*i))),HEX);
+            }
+            Serial.write("\n",2);
+        }
+
+        sendStrip(((uint32_t*)(serialBuff+1)),10,pinNum);
 
     }
-
-    sendStrip(serialPattern,10,pinNum);
-
-  }
-  //delay(20); // give time to send serial (idk if this is necessary)
+    //delay(20); // give time to send serial (idk if this is necessary)
 
 }
 
 
 
 int sendStrip(uint32_t *stripData, int stripSize, int pin) {
-  int i;
+    int i;
 
-  if (pin == 6) {
-    noInterrupts();
-    for (i = 0; i < stripSize; i++) {
-      sendDataD6(stripData[i]);
+    if (pin == 6) {
+        noInterrupts();
+        for (i = 0; i < stripSize; i++) {
+            sendDataD6(stripData[i]);
+        }
+        interrupts();
     }
-    interrupts();
-  }
-  else if (pin == 5) {
-    noInterrupts();
-    for (i = 0; i < stripSize; i++) {
-      sendDataD5(stripData[i]);
+    else if (pin == 5) {
+        noInterrupts();
+        for (i = 0; i < stripSize; i++) {
+            sendDataD5(stripData[i]);
+        }
+        interrupts();
     }
-    interrupts();
-  }
-  else if (pin == 3) {
-    noInterrupts();
-    for (i = 0; i < stripSize; i++) {
-      sendDataD3(stripData[i]);
+    else if (pin == 3) {
+        noInterrupts();
+        for (i = 0; i < stripSize; i++) {
+            sendDataD3(stripData[i]);
+        }
+        interrupts();
     }
-    interrupts();
-  }
-  else {
-    return -1;
-  }
+    else {
+        return -1;
+    }
 
-  return 0;
+    return 0;
 }
 
 
 void sendDataD6(uint32_t data) { // actually sends the individual strip data
-  int i;
-  unsigned long j=0x800000; // 1000 0000 0000 0000 0000 0000 (24 bits)
-  
- 
-  for (i=0;i<24;i++)
-  {
-    if (data & j)
+    int i;
+    unsigned long j=0x800000; // 1000 0000 0000 0000 0000 0000 (24 bits)
+
+
+    for (i=0;i<24;i++)
     {
-      DATA_1XX; // 28
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");   
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t"); 
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t"); 
-      __asm__("nop\n\t"); 
-      __asm__("nop\n\t");         
-      DATA_0XX;
-    }
-    else
-    {
-      DATA_1XX; // 9
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");   
-      DATA_0XX;
-/*----------------------------*/      
-       __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");     
-/*----------------------------*/         
+        if (data & j)
+        {
+            DATA_1XX; // 28
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");   
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t"); 
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t"); 
+            __asm__("nop\n\t"); 
+            __asm__("nop\n\t");         
+            DATA_0XX;
+        }
+        else
+        {
+            DATA_1XX; // 9
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");   
+            DATA_0XX;
+            /*----------------------------*/      
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");     
+            /*----------------------------*/         
+        }
+
+        j>>=1;
     }
 
-    j>>=1;
-  }
-  
 }
 
 
@@ -192,135 +173,135 @@ void sendDataD6(uint32_t data) { // actually sends the individual strip data
 
 
 void sendDataD5(uint32_t data) { // actually sends the individual strip data
-  int i;
-  unsigned long j=0x800000; // 1000 0000 0000 0000 0000 0000 (24 bits)
-  
- 
-  for (i=0;i<24;i++)
-  {
-    if (data & j)
+    int i;
+    unsigned long j=0x800000; // 1000 0000 0000 0000 0000 0000 (24 bits)
+
+
+    for (i=0;i<24;i++)
     {
-      DATA_X1X; // 28
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");   
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t"); 
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t"); 
-      __asm__("nop\n\t"); 
-      __asm__("nop\n\t");         
-      DATA_X0X;
-    }
-    else
-    {
-      DATA_X1X; // 9
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");   
-      DATA_X0X;
-/*----------------------------*/      
-       __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");     
-/*----------------------------*/         
+        if (data & j)
+        {
+            DATA_X1X; // 28
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");   
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t"); 
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t"); 
+            __asm__("nop\n\t"); 
+            __asm__("nop\n\t");         
+            DATA_X0X;
+        }
+        else
+        {
+            DATA_X1X; // 9
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");   
+            DATA_X0X;
+            /*----------------------------*/      
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");     
+            /*----------------------------*/         
+        }
+
+        j>>=1;
     }
 
-    j>>=1;
-  }
-  
 }
 
 
 
 void sendDataD3(uint32_t data) { // actually sends the individual strip data
-  int i;
-  unsigned long j=0x800000; // 1000 0000 0000 0000 0000 0000 (24 bits)
-  
- 
-  for (i=0;i<24;i++)
-  {
-    if (data & j)
+    int i;
+    unsigned long j=0x800000; // 1000 0000 0000 0000 0000 0000 (24 bits)
+
+
+    for (i=0;i<24;i++)
     {
-      DATA_XX1; // 28
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");   
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t"); 
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t"); 
-      __asm__("nop\n\t"); 
-      __asm__("nop\n\t");         
-      DATA_XX0;
-    }
-    else
-    {
-      DATA_XX1; // 9
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");   
-      DATA_XX0;
-/*----------------------------*/      
-       __asm__("nop\n\t");
-      __asm__("nop\n\t");
-      __asm__("nop\n\t");     
-/*----------------------------*/         
+        if (data & j)
+        {
+            DATA_XX1; // 28
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");   
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t"); 
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t"); 
+            __asm__("nop\n\t"); 
+            __asm__("nop\n\t");         
+            DATA_XX0;
+        }
+        else
+        {
+            DATA_XX1; // 9
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");   
+            DATA_XX0;
+            /*----------------------------*/      
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");
+            __asm__("nop\n\t");     
+            /*----------------------------*/         
+        }
+
+        j>>=1;
     }
 
-    j>>=1;
-  }
-  
 }
