@@ -2,14 +2,9 @@
 import serial, time, numpy
 from colour import Color
 import collections
+import subprocess
 
-global maxVal 
-global minVal
-global ser
-global rollingArray
-global rollingArraySmall
-global n
-global k
+global decoded
 
 def pya_nightlight_callback(in_data, frame_count, time_info, status):
     global ser
@@ -23,68 +18,26 @@ def pya_nightlight_callback(in_data, frame_count, time_info, status):
     rollingArray.append(amplitude)
     noise_floor = sum(rollingArray)/len(rollingArray)
     amplitude = sum(rollingArraySmall)/len(rollingArraySmall)
+    k = (k-1) if k > 0 else 0
     if amplitude > 0.05:
         n = 1
         k = 250
     amplitudeColor = Color(rgb=(0,k/500.0,0)).hex_l
-    k = (k-1) if k > 0 else 0
     colorList = [amplitudeColor] * 10
     #print noise_floor, amplitude
-    led_send(ser, 5, colorList)
-    #time.sleep(0.025)
-    time.sleep(0.005)
-    led_send(ser, 6, colorList)
+    if n == 1:
+        led_send(ser, 5, colorList)
+        #time.sleep(0.025)
+        time.sleep(0.005)
+        led_send(ser, 6, colorList)
+        if k == 0:
+            n = 0
     return (in_data, pyaudio.paContinue)
 
 def pya_callback(in_data, frame_count, time_info, status):
     config = 0
-    global maxVal 
-    global minVal
-    global ser
-    global rollingArray
-    global rollingArraySmall
-    global n
-    global k
-    if n == 10:
-       k = (k+1)%2 
-    n = (n+1)%20
-    print(k,n)
+    global decoded
     decoded = numpy.fromstring(in_data, 'Float32')
-    amplitude = numpy.sqrt(numpy.mean(numpy.square(decoded)))
-    rollingArray.append(amplitude)
-    rollingArraySmall.append(amplitude)
-    maxVal = max(rollingArray)
-    minVal = min(rollingArray)
-    #maxVal = amplitude if amplitude > maxVal else maxVal
-    #minVal = amplitude if amplitude < minVal else minVal
-    #maxVal = 0.8
-    #print(amplitude, minVal, maxVal)
-    amplitude = sum(rollingArraySmall)/len(rollingArraySmall)
-    #amplitudeColor = Color(hsl=(0, 0, (amplitude/(maxVal-minVal))))
-    ampValue = (min(1,(amplitude-minVal)/(maxVal-minVal)))
-    if config == 1:
-        amplitudeColor = Color(rgb=(ampValue,0,0))
-        amplitudeColor2 = Color(rgb=(0,ampValue,0))
-    else:
-        amplitudeColor = Color(rgb=(0,ampValue,ampValue))
-        amplitudeColor2 = Color(rgb=(0,0,ampValue))
-    #amplitudeColor = Color(hsv=(0.5,ampValue,ampValue))
-    #amplitudeColor2 = Color(hsv=(0.75,ampValue,ampValue))
-    pattern1 = ([amplitudeColor.hex_l] + [amplitudeColor2.hex_l])*5
-    pattern2 = ([amplitudeColor2.hex_l] + [amplitudeColor.hex_l])*5
-    if k:
-        colorList = pattern1
-        colorList2 = pattern2
-    else:
-        colorList = pattern2
-        colorList2 = pattern1
-    #print(colorList)
-    led_send(ser, 6, colorList)
-    time.sleep(0.005)
-    #time.sleep(0.025)
-    led_send(ser, 5, colorList2)
-    #time.sleep(0.025)
-    time.sleep(0.005)
     return (in_data, pyaudio.paContinue)
 
 
@@ -111,6 +64,8 @@ def led_send(sobj, addr,colors):
 
 if __name__ == '__main__':
     import pyaudio
+    global decoded
+    decoded = None
     # Setup code
     ser = serial.Serial('/dev/ttyAMA0', 115200, rtscts=1)
     minVal = 1
@@ -118,12 +73,12 @@ if __name__ == '__main__':
     n = 0
     k = 0
     rollingArray = collections.deque(maxlen=100)
-    rollingArraySmall = collections.deque(maxlen=2)
+    rollingArraySmall = collections.deque(maxlen=5)
     rollingArray.append(0.0)
     rollingArraySmall.append(0.0)
 
     WIDTH = 2
-    CHANNELS = 1
+    CHANNELS = 2
     RATE = 48000
     FORMAT = pyaudio.paFloat32
 
@@ -133,15 +88,61 @@ if __name__ == '__main__':
                     channels=CHANNELS,
                     rate=RATE,
                     input=True,
-                    output=False,
-                    stream_callback=pya_nightlight_callback)
-    #                stream_callback=pya_callback)
+                    output=True,
+                    stream_callback=pya_callback)
+    #                stream_callback=pya_nightlight_callback)
 
     stream.start_stream()
+    config = 0
 
     while stream.is_active():
-        time.sleep(0.1)
+        if type(decoded) == type(None):
+            continue
+        if n == 10:
+           k = (k+1)%2 
+        n = (n+1)%20
+        #print(k,n)
+        amplitude = numpy.sqrt(numpy.mean(numpy.square(decoded)))
+        amplitude = numpy.sum(numpy.absolute(decoded))
+        rollingArray.append(amplitude)
+        rollingArraySmall.append(amplitude)
+        #maxVal = max(rollingArray) if max(rollingArray) > 0.1 else 0.3
+        #minVal = min(rollingArray) if min(rollingArray) < 0.4 else 0.04
+        #maxVal = amplitude if amplitude > maxVal else maxVal
+        #minVal = amplitude if amplitude < minVal else minVal
+        print(len(decoded))
+        maxVal = max(rollingArray)
+        minVal = min(rollingArray)
+        #minVal = min(rollingArray)
+        #maxVal = 0.8
+        print(amplitude, minVal, maxVal)
 
+        amplitude = sum(rollingArraySmall)/len(rollingArraySmall)
+        #amplitudeColor = Color(hsl=(0, 0, (amplitude/(maxVal-minVal))))
+        ampValue = (min(1,(amplitude-minVal)/(maxVal-minVal)))
+        if config == 1:
+            amplitudeColor = Color(rgb=(ampValue,0,0))
+            amplitudeColor2 = Color(rgb=(0,ampValue,0))
+        else:
+            amplitudeColor = Color(rgb=(0,ampValue,ampValue))
+            amplitudeColor2 = Color(rgb=(0,0,ampValue))
+        #amplitudeColor = Color(hsv=(0.5,ampValue,ampValue))
+        #amplitudeColor2 = Color(hsv=(0.75,ampValue,ampValue))
+        pattern1 = ([amplitudeColor.hex_l] + [amplitudeColor2.hex_l])*5
+        pattern2 = ([amplitudeColor2.hex_l] + [amplitudeColor.hex_l])*5
+        if k:
+            colorList = pattern1
+            colorList2 = pattern2
+        else:
+            colorList = pattern2
+            colorList2 = pattern1
+        #print(colorList)
+        led_send(ser, 6, colorList)
+        time.sleep(0.005)
+        #time.sleep(0.025)
+        led_send(ser, 5, colorList2)
+        #time.sleep(0.025)
+        time.sleep(0.005)
     stream.stop_stream()
     stream.close()
 
