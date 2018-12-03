@@ -7,6 +7,7 @@ from datetime import datetime
 
 global decoded
 global lastcallback
+global some_modulus
 
 def pya_nightlight_callback(in_data, frame_count, time_info, status):
     global ser
@@ -46,6 +47,7 @@ def pya_callback(in_data, frame_count, time_info, status):
 
 
 def led_send(sobj, addr,colors):
+    global some_modulus
     raw_list = []
     '''
     if len(colors) != 450:
@@ -56,18 +58,26 @@ def led_send(sobj, addr,colors):
         if elem[0] == '#':
             elem = elem[1:]
         raw_list.append(int(elem[2:4],16))
-        raw_list.append(int(elem[4:6],16))
-        raw_list.append(int(elem[0:2],16))
+        raw_list.append(int(elem[4:6],16)*0)
+        raw_list.append(int(elem[0:2],16)*0)
         #raw_list.append(int('00',16))   
     #raw_list = raw_list*675
     #raw_list = [0] + raw_list
     #print(repr(raw_list))
-    send_data = 675*bytearray(raw_list)
+    print(some_modulus)
+    #send_data = bytearray([0]+150*[0,128,128]+1200*[0]) #*bytearray(raw_list)
+    #send_data = bytearray([0] + raw_list*1350)
+    raw_list = 1350*[0]
+    raw_list[some_modulus%len(raw_list)] = 128
+    some_modulus += 1
+    send_data = bytearray([0]+raw_list)
+    #print(send_data)
     #print(repr(send_data) + str(len(send_data)))
     #print(len(send_data))
     sobj.write(send_data)
     #time.sleep(0.005)
-    return send_data
+    #return send_data
+    return
     '''
     raw_list = []
     #raw_list.append(int('00',16))
@@ -78,6 +88,7 @@ def led_send(sobj, addr,colors):
         raw_list.append(int(elem[2:4],16))
         raw_list.append(int(elem[4:6],16))
         raw_list.append(int(elem[0:2],16))
+
     send_data = bytearray(raw_list)
     print(repr(send_data) + str(len(send_data)))
     sobj.write(send_data)
@@ -88,13 +99,15 @@ if __name__ == '__main__':
     import pyaudio
     global decoded
     global lastcallback
+    global some_modulus
     decoded = None
     # Setup code
-    ser = serial.Serial('/dev/ttyAMA0', 500000, rtscts=1)
+    ser = serial.Serial('/dev/ttyAMA0', 500000, rtscts=1, writeTimeout=0)
     minVal = 1
     maxVal = 0
     n = 0
     k = 0
+    some_modulus = 0
     rollingArray = collections.deque(maxlen=100)
     rollingArraySmall = collections.deque(maxlen=5)
     rollingArray.append(0.0)
@@ -110,7 +123,6 @@ if __name__ == '__main__':
     old_decoded = None
     while (auto_restart):
         paobj = pyaudio.PyAudio()
-
         stream = paobj.open(format=FORMAT,
                         channels=CHANNELS,
                         rate=RATE,
@@ -168,7 +180,6 @@ if __name__ == '__main__':
             else:
                 amplitudeColor = Color(rgb=(0,ampValue,ampValue))
                 amplitudeColor2 = Color(rgb=(0,0,ampValue))
-            '''
             amplitudeColor = Color(rgb=(ampValue,ampValue,ampValue))
             amplitudeColor2 = Color(rgb=(ampValue,ampValue,ampValue))
             #amplitudeColor = Color(hsv=(0.5,ampValue,ampValue))
@@ -181,13 +192,16 @@ if __name__ == '__main__':
             else:
                 colorList = pattern2
                 colorList2 = pattern1
+            '''
+            amplitudeColor = Color(rgb=(ampValue,ampValue,ampValue))
+            colorList = [amplitudeColor.hex_l]
             #print(colorList)
             #led_send(ser, 6, colorList)
             #time.sleep(0.005)
             #time.sleep(0.025)
-            led_send(ser, 5, colorList2)
-            #time.sleep(0.0025)
-            #time.sleep(0.005)
+            led_send(ser, 5, colorList)
+            time.sleep(0.05)
+            #time.sleep(0.025)
         stream.stop_stream()
         stream.close()
         paobj.terminate()
