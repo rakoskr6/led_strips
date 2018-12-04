@@ -47,8 +47,21 @@ def pya_callback(in_data, frame_count, time_info, status):
     decoded = numpy.fromstring(in_data, 'Float32')
     return (in_data, pyaudio.paContinue)
 
+def whitecorrect(inList):
+    correctFactor = 0.80
+    if (len(inList) % 3 != 0):
+        print("UHHHH something is wrong with list {}".format(inList))
+    outList = [int(elem*correctFactor) if not (i)%3 else elem for i,elem in enumerate(inList)]
+    #print("{} -> {}".format(inList, outList))
+    return outList
 
-def led_send(sobj, addr,colors):
+def add_runner(inList, pos, val, width):
+    for i in range(width):
+        inList[1+((pos+i)%454)*3] = min(255,2*val)
+        inList[2+((pos+i)%454)*3] = min(255,2*val)
+        inList[3+((pos+i)%454)*3] = min(255,2*val)
+
+def led_send(sobj,amplitude,colors):
     global some_modulus
     global sending
     if sending == True:
@@ -66,13 +79,19 @@ def led_send(sobj, addr,colors):
         raw_list.append(int(elem[2:4],16))
         raw_list.append(int(elem[4:6],16))
         #raw_list.append(int('00',16))   
-    raw_list = raw_list*450
-    raw_list = [0] + raw_list
+    whitecorrect_list = whitecorrect(raw_list)
+    raw_list = raw_list*75 + whitecorrect_list*(150) + [0]*12
+    raw_list = [0]+ raw_list
     #print(repr(raw_list))
-    print(some_modulus)
-
+    #raw_list = [0] + [255]*1359
+    #print(some_modulus)
+    add_runner(raw_list,some_modulus%1362,int(255*ampValue),5)
+    
+    add_runner(raw_list,(some_modulus+150)%1362,int(255*ampValue),5)
+    
+    add_runner(raw_list,(some_modulus+300)%1362,int(255*ampValue),5)
+    
     #thislist = 150*[128]+1200*[0]
-    #rotated_list = thislist[-(some_modulus*33%1350):] + thislist[:-(some_modulus*33%1350)]
     #send_data = bytearray([0]+rotated_list)
     send_data = bytearray(raw_list)
     #send_data = bytearray([0] + raw_list*1350)
@@ -85,7 +104,9 @@ def led_send(sobj, addr,colors):
     #print(len(send_data))
     #print("attempting to send bits")
     sending = True
+    #print(sobj.read(sobj.in_waiting))
     bitssent = sobj.write(send_data)
+    time.sleep(0.044)
     sending = False
     #print("Successfully? sent {} bits".format(bitssent))
     #time.sleep(0.005)
@@ -115,8 +136,9 @@ if __name__ == '__main__':
     global some_modulus
     decoded = None
     # Setup code
-    #ser = serial.Serial('/dev/ttyAMA0', 500000, rtscts=1, writeTimeout=0)
-    ser = serial.Serial('/dev/ttyAMA0', 500000, rtscts=1)
+    #ser = serial.Serial('/dev/ttyAMA0', 2000000, rtscts=1, writeTimeout=0)
+    ser = serial.Serial('/dev/ttyACM0', 500000, writeTimeout=0)
+    print(ser.readline())
     minVal = 1
     maxVal = 0
     n = 0
@@ -146,7 +168,7 @@ if __name__ == '__main__':
                         stream_callback=pya_callback)
         #                stream_callback=pya_nightlight_callback)
         stream.start_stream()
-        config = 0 
+        config = 1 
         waiting = False
         while stream.is_active():
             if type(decoded) == type(None):
@@ -166,9 +188,9 @@ if __name__ == '__main__':
                 if badcount > 5:
                     badcount = 0
                     break
-            if n == 2:
+            if n == 20:
                k = (k+1)%2 
-            n = (n+1)%4
+            n = (n+1)%40
             #print(k,n)
             amplitude = numpy.sqrt(numpy.mean(numpy.square(decoded)))
             amplitude = numpy.sum(numpy.absolute(decoded))
@@ -193,12 +215,19 @@ if __name__ == '__main__':
                 print("aaaa something went wrong in the stream, restarting")
                 break
             #print(ampValue)
-            if config == 1:
+            if config == 0:
                 amplitudeColor = Color(rgb=(ampValue,0,0))
                 amplitudeColor2 = Color(rgb=(0,ampValue,0))
-            else:
+            elif config == 1:
                 amplitudeColor = Color(rgb=(0,ampValue,ampValue))
                 amplitudeColor2 = Color(rgb=(0,0,ampValue))
+            elif config == 2:
+                amplitudeColor = Color(rgb=(ampValue,ampValue*0.6,ampValue*0.6))
+                amplitudeColor2 = Color(rgb=(ampValue,ampValue*0.6,ampValue*0.6))
+            else:
+                amplitudeColor =  Color(rgb=(ampValue,ampValue,ampValue))
+                amplitudeColor2 =  Color(rgb=(ampValue*0.6,ampValue*0.6,ampValue*0.6))
+                
             #amplitudeColor = Color(hsv=(0.5,ampValue,ampValue))
             #amplitudeColor2 = Color(hsv=(0.75,ampValue,ampValue))
             pattern1 = ([amplitudeColor.hex_l] + [amplitudeColor2.hex_l])
@@ -213,8 +242,7 @@ if __name__ == '__main__':
             #led_send(ser, 6, colorList)
             #time.sleep(0.005)
             #time.sleep(0.025)
-            led_send(ser, 5, colorList)
-            time.sleep(0.049)
+            led_send(ser, ampValue, colorList)
             #time.sleep(0.050)
         stream.stop_stream()
         stream.close()
