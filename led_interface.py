@@ -1,10 +1,12 @@
 #!/usr/bin/python
+from __future__ import print_function
 import serial, time, numpy
 from colour import Color
 import collections
 import subprocess
 from datetime import datetime
 
+global sending
 global decoded
 global lastcallback
 global some_modulus
@@ -31,7 +33,7 @@ def pya_nightlight_callback(in_data, frame_count, time_info, status):
     if n == 1:
         led_send(ser, 5, colorList)
         #time.sleep(0.025)
-        time.sleep(0.005)
+        #time.sleep(0.005)
         led_send(ser, 6, colorList)
         if k == 0:
             n = 0
@@ -48,6 +50,9 @@ def pya_callback(in_data, frame_count, time_info, status):
 
 def led_send(sobj, addr,colors):
     global some_modulus
+    global sending
+    if sending == True:
+        return
     raw_list = []
     '''
     if len(colors) != 450:
@@ -57,24 +62,32 @@ def led_send(sobj, addr,colors):
     for elem in colors:
         if elem[0] == '#':
             elem = elem[1:]
+        raw_list.append(int(elem[0:2],16))
         raw_list.append(int(elem[2:4],16))
-        raw_list.append(int(elem[4:6],16)*0)
-        raw_list.append(int(elem[0:2],16)*0)
+        raw_list.append(int(elem[4:6],16))
         #raw_list.append(int('00',16))   
-    #raw_list = raw_list*675
-    #raw_list = [0] + raw_list
+    raw_list = raw_list*450
+    raw_list = [0] + raw_list
     #print(repr(raw_list))
     print(some_modulus)
-    #send_data = bytearray([0]+150*[0,128,128]+1200*[0]) #*bytearray(raw_list)
+
+    #thislist = 150*[128]+1200*[0]
+    #rotated_list = thislist[-(some_modulus*33%1350):] + thislist[:-(some_modulus*33%1350)]
+    #send_data = bytearray([0]+rotated_list)
+    send_data = bytearray(raw_list)
     #send_data = bytearray([0] + raw_list*1350)
-    raw_list = 1350*[0]
-    raw_list[some_modulus%len(raw_list)] = 128
+    #raw_list = 1350*[20]
+    #raw_list[some_modulus%len(raw_list)] = 128
     some_modulus += 1
-    send_data = bytearray([0]+raw_list)
+    #send_data = bytearray([0]+raw_list)
     #print(send_data)
     #print(repr(send_data) + str(len(send_data)))
     #print(len(send_data))
-    sobj.write(send_data)
+    #print("attempting to send bits")
+    sending = True
+    bitssent = sobj.write(send_data)
+    sending = False
+    #print("Successfully? sent {} bits".format(bitssent))
     #time.sleep(0.005)
     #return send_data
     return
@@ -102,7 +115,8 @@ if __name__ == '__main__':
     global some_modulus
     decoded = None
     # Setup code
-    ser = serial.Serial('/dev/ttyAMA0', 500000, rtscts=1, writeTimeout=0)
+    #ser = serial.Serial('/dev/ttyAMA0', 500000, rtscts=1, writeTimeout=0)
+    ser = serial.Serial('/dev/ttyAMA0', 500000, rtscts=1)
     minVal = 1
     maxVal = 0
     n = 0
@@ -121,6 +135,7 @@ if __name__ == '__main__':
     numpy.seterr(all='raise')
     auto_restart = 1
     old_decoded = None
+    sending = False
     while (auto_restart):
         paobj = pyaudio.PyAudio()
         stream = paobj.open(format=FORMAT,
@@ -131,12 +146,17 @@ if __name__ == '__main__':
                         stream_callback=pya_callback)
         #                stream_callback=pya_nightlight_callback)
         stream.start_stream()
-        config = 1
-
+        config = 0 
+        waiting = False
         while stream.is_active():
             if type(decoded) == type(None):
-                print("aaaa")
+                if waiting == False:
+                    print("Waiting for stream", end ="")
+                    waiting = True
+                else:
+                    print(".", end="")
                 continue
+            waiting = False
             currtime = float(datetime.now().strftime('%s.%f'))
             #print("Currtime: {0}".format(currtime))
             #print("Callback: {0}".format(lastcallback))
@@ -146,9 +166,9 @@ if __name__ == '__main__':
                 if badcount > 5:
                     badcount = 0
                     break
-            if n == 10:
+            if n == 2:
                k = (k+1)%2 
-            n = (n+1)%20
+            n = (n+1)%4
             #print(k,n)
             amplitude = numpy.sqrt(numpy.mean(numpy.square(decoded)))
             amplitude = numpy.sum(numpy.absolute(decoded))
@@ -173,15 +193,12 @@ if __name__ == '__main__':
                 print("aaaa something went wrong in the stream, restarting")
                 break
             #print(ampValue)
-            '''
             if config == 1:
                 amplitudeColor = Color(rgb=(ampValue,0,0))
                 amplitudeColor2 = Color(rgb=(0,ampValue,0))
             else:
                 amplitudeColor = Color(rgb=(0,ampValue,ampValue))
                 amplitudeColor2 = Color(rgb=(0,0,ampValue))
-            amplitudeColor = Color(rgb=(ampValue,ampValue,ampValue))
-            amplitudeColor2 = Color(rgb=(ampValue,ampValue,ampValue))
             #amplitudeColor = Color(hsv=(0.5,ampValue,ampValue))
             #amplitudeColor2 = Color(hsv=(0.75,ampValue,ampValue))
             pattern1 = ([amplitudeColor.hex_l] + [amplitudeColor2.hex_l])
@@ -192,16 +209,13 @@ if __name__ == '__main__':
             else:
                 colorList = pattern2
                 colorList2 = pattern1
-            '''
-            amplitudeColor = Color(rgb=(ampValue,ampValue,ampValue))
-            colorList = [amplitudeColor.hex_l]
             #print(colorList)
             #led_send(ser, 6, colorList)
             #time.sleep(0.005)
             #time.sleep(0.025)
             led_send(ser, 5, colorList)
-            time.sleep(0.05)
-            #time.sleep(0.025)
+            time.sleep(0.049)
+            #time.sleep(0.050)
         stream.stop_stream()
         stream.close()
         paobj.terminate()
