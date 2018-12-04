@@ -20,25 +20,6 @@ extern CRGBPalette16 ChristmasPalette;
 extern const TProgmemPalette16 ChristmasPalette_p PROGMEM;
 
 
-void setup() {
-  delay(500); // power-up safety delay
-  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
-  FastLED.setBrightness(BRIGHTNESS);
-  currentPalette = ChristmasPalette_p;
-  currentBlending = LINEARBLEND;
-  
-  Serial.begin(500000); // Set baud rate
-  
-  // Startup sequence to indicate bootup complete
-  fillLEDs(0, 0, 0);
-  delay(200);
-  FillLEDsWithChristmas();
-  
-  //if (ENABLE_DEBUG_MSGS) {
-    Serial.println("Program Started");
-    Serial.println(SERIAL_BUFF_SIZE);
-  //}
-}
 
 
 void fillLEDs(char r, char g, char b) {
@@ -64,6 +45,25 @@ void FillLEDsWithChristmas() { // Alternates red and green LEDs
   FastLED.show();
 }
 
+void setup() {
+  delay(500); // power-up safety delay
+  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
+  FastLED.setBrightness(BRIGHTNESS);
+  currentPalette = ChristmasPalette_p;
+  currentBlending = LINEARBLEND;
+  
+  Serial.begin(500000); // Set baud rate
+  
+  // Startup sequence to indicate bootup complete
+  fillLEDs(0, 0, 0);
+  delay(200);
+  FillLEDsWithChristmas();
+  
+  //if (ENABLE_DEBUG_MSGS) {
+    Serial.println("Program Started");
+    Serial.println(SERIAL_BUFF_SIZE);
+  //}
+}
 
 void fillLEDsFromPaletteColors( uint8_t colorIndex)
 {

@@ -1,7 +1,7 @@
-
+INC=-I~/FastLED/
 # Arduino Make file. Refer to https://github.com/sudar/Arduino-Makefile
 
-BOARD_TAG    = uno
+BOARD_TAG    = mega2560
 #DEVICE_PATH = /dev/ttyACM0
 #MONITOR_PORT = /dev/ttyAMA0
 include ~/Arduino-Makefile/Arduino.mk

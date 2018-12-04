@@ -1,5 +1,5 @@
 # Garbage that kyle didn't add
-arduino_code/build_uno/*
+arduino_code/build_mega2560/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
