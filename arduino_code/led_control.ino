@@ -95,7 +95,7 @@ void processBuffer(char *buff) {
     blue = buff[k];
     fillLEDs(red, green, blue);    
   }
-  else if (command == 0x02) { //color pallette 
+  else if (command == 0x02) { //color palette 
     fillLEDsFromPaletteColors(startIndex);
   }
   else { // normal mode
@@ -143,7 +143,7 @@ void loop() {
     if (buffPos == 0 && ch == 0x1) { //global color mode
       numBytesToRead = 4 - 1;
     }
-    else if (buffPos == 0 && ch == 0x2) { // pallette mode
+    else if (buffPos == 0 && ch == 0x2) { // palette mode
       numBytesToRead = 1 - 1; 
     }
     else if (buffPos == 0) { // default to individually addressable LEDs
