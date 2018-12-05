@@ -5,11 +5,15 @@ from colour import Color
 import collections
 import subprocess
 from datetime import datetime
+from scipy import signal
+
 
 global sending
 global decoded
 global lastcallback
 global some_modulus
+global b,a
+
 
 def pya_nightlight_callback(in_data, frame_count, time_info, status):
     global ser
@@ -42,10 +46,22 @@ def pya_nightlight_callback(in_data, frame_count, time_info, status):
 def pya_callback(in_data, frame_count, time_info, status):
     config = 0
     global decoded
-    global lastcallback
+    global lastcallback, b, a
     lastcallback = float(datetime.now().strftime('%s.%f'))
     decoded = numpy.fromstring(in_data, 'Float32')
+    #filtered = signal.filtfilt(b,a,decoded,padlen=200).astype(np.float32).tostring()
+    #print(in_data)
     return (in_data, pyaudio.paContinue)
+
+def bytebound(val):
+    return int(max(0, min(255, val)))
+
+def addnoise(inList):
+    assert (len(inList)-1)%3 == 0
+    noise = numpy.repeat(numpy.random.normal(0,5,(len(inList)-1)//3),3)
+    outList = [inList[0]] + [max(0, min(255, int(elem))) for elem in list(inList[1:] + noise)]   
+    #print(outList[0])
+    return outList
 
 def whitecorrect(inList):
     correctFactor = 0.80
@@ -61,11 +77,14 @@ def add_runner(inList, pos, val, width):
         inList[2+((pos+i)%454)*3] = min(255,2*val)
         inList[3+((pos+i)%454)*3] = min(255,2*val)
 
+def now():
+    return float(datetime.now().strftime('%s.%f'))
+
 def led_send(sobj,amplitude,colors):
     global some_modulus
     global sending
-    if sending == True:
-        return
+    #if sending == True:
+    #    return
     raw_list = []
     '''
     if len(colors) != 450:
@@ -81,18 +100,19 @@ def led_send(sobj,amplitude,colors):
         #raw_list.append(int('00',16))   
     whitecorrect_list = whitecorrect(raw_list)
     raw_list = raw_list*75 + whitecorrect_list*(150) + [0]*12
-    raw_list = [0]+ raw_list
     #print(repr(raw_list))
     #raw_list = [0] + [255]*1359
     #print(some_modulus)
-    add_runner(raw_list,some_modulus%1362,int(255*ampValue),5)
+    raw_list = [0] + raw_list
+    add_runner(raw_list,some_modulus%1362,int(255*ampValue),10)
     
-    add_runner(raw_list,(some_modulus+150)%1362,int(255*ampValue),5)
+    add_runner(raw_list,(some_modulus+150)%1362,int(255*ampValue),10)
     
-    add_runner(raw_list,(some_modulus+300)%1362,int(255*ampValue),5)
+    add_runner(raw_list,(some_modulus+300)%1362,int(255*ampValue),10)
     
     #thislist = 150*[128]+1200*[0]
     #send_data = bytearray([0]+rotated_list)
+    raw_list = addnoise(raw_list)
     send_data = bytearray(raw_list)
     #send_data = bytearray([0] + raw_list*1350)
     #raw_list = 1350*[20]
@@ -108,7 +128,7 @@ def led_send(sobj,amplitude,colors):
     bitssent = sobj.write(send_data)
     time.sleep(0.044)
     sending = False
-    #print("Successfully? sent {} bits".format(bitssent))
+    print("Successfully sent {} bytes".format(bitssent))
     #time.sleep(0.005)
     #return send_data
     return
@@ -129,21 +149,36 @@ def led_send(sobj,amplitude,colors):
     '''
     pass
 
+def reloadColors():
+    try:
+        with open('colorsettings.txt', 'r') as fd:
+            data = fd.readlines()
+            c1_r, c1_g, c1_b = [float(elem) for elem in data[0].strip().split(',')]
+            c2_r, c2_g, c2_b = [float(elem) for elem in data[1].strip().split(',')]
+            return c1_r, c1_g, c1_b, c2_r, c2_g, c2_b
+    except:
+        return [1.0, 1.0, 1.0, 0.5, 0.5, 0]
+    return [1.0, 1.0, 1.0, 0.5, 0.5, 0]
+
 if __name__ == '__main__':
     import pyaudio
     global decoded
     global lastcallback
     global some_modulus
+    global lastconfigchange
+    global b, a
     decoded = None
     # Setup code
     #ser = serial.Serial('/dev/ttyAMA0', 2000000, rtscts=1, writeTimeout=0)
     ser = serial.Serial('/dev/ttyACM0', 500000, writeTimeout=0)
+    #print(ser.read(ser.in_waiting))
     print(ser.readline())
     minVal = 1
     maxVal = 0
     n = 0
     k = 0
     some_modulus = 0
+    b, a = signal.butter(5, 100.0/(0.5*48000), btype='lowpass')
     rollingArray = collections.deque(maxlen=100)
     rollingArraySmall = collections.deque(maxlen=5)
     rollingArray.append(0.0)
@@ -153,11 +188,12 @@ if __name__ == '__main__':
     CHANNELS = 2
     RATE = 48000
     FORMAT = pyaudio.paFloat32
-
+    c1_r, c1_g, c1_b, c2_r, c2_g, c2_b = reloadColors()
     numpy.seterr(all='raise')
     auto_restart = 1
     old_decoded = None
     sending = False
+    lastconfigchange = now()
     while (auto_restart):
         paobj = pyaudio.PyAudio()
         stream = paobj.open(format=FORMAT,
@@ -168,7 +204,7 @@ if __name__ == '__main__':
                         stream_callback=pya_callback)
         #                stream_callback=pya_nightlight_callback)
         stream.start_stream()
-        config = 1 
+        config = 4 
         waiting = False
         while stream.is_active():
             if type(decoded) == type(None):
@@ -179,7 +215,10 @@ if __name__ == '__main__':
                     print(".", end="")
                 continue
             waiting = False
-            currtime = float(datetime.now().strftime('%s.%f'))
+            currtime = now()
+            if (currtime - lastconfigchange) > 10:
+                config = (config+1)%5
+                lastconfigchange = now()
             #print("Currtime: {0}".format(currtime))
             #print("Callback: {0}".format(lastcallback))
             if (currtime - lastcallback) > 0.25:
@@ -190,10 +229,17 @@ if __name__ == '__main__':
                     break
             if n == 20:
                k = (k+1)%2 
+               c1_r, c1_g, c1_b, c2_r, c2_g, c2_b = reloadColors()
             n = (n+1)%40
             #print(k,n)
-            amplitude = numpy.sqrt(numpy.mean(numpy.square(decoded)))
+            #filtered = decoded
+            #b, a = signal.butter(5, 100/(0.5*48000), btype='lowpass')
+            #filtered = signal.filtfilt(b,a,decoded)
+            #amplitude = numpy.sqrt(numpy.mean(numpy.square(filtered)))
+            #filtamplitude = numpy.sum(numpy.absolute(filtered))
             amplitude = numpy.sum(numpy.absolute(decoded))
+            #print("FIL: {}".format(amplitude))
+            #print("RAW: {}\n".format(rawamplitude))
             rollingArray.append(amplitude)
             rollingArraySmall.append(amplitude)
             #maxVal = max(rollingArray) if max(rollingArray) > 0.1 else 0.3
@@ -222,11 +268,15 @@ if __name__ == '__main__':
                 amplitudeColor = Color(rgb=(0,ampValue,ampValue))
                 amplitudeColor2 = Color(rgb=(0,0,ampValue))
             elif config == 2:
-                amplitudeColor = Color(rgb=(ampValue,ampValue*0.6,ampValue*0.6))
-                amplitudeColor2 = Color(rgb=(ampValue,ampValue*0.6,ampValue*0.6))
-            else:
+                amplitudeColor = Color(rgb=(ampValue,ampValue*0.6,ampValue*0.4))
+                amplitudeColor2 = Color(rgb=(ampValue,ampValue*0.6,ampValue*0.4))
+            elif config == 3:
                 amplitudeColor =  Color(rgb=(ampValue,ampValue,ampValue))
                 amplitudeColor2 =  Color(rgb=(ampValue*0.6,ampValue*0.6,ampValue*0.6))
+            else:
+                # CUSTOM COLORS BASED OFF OF STUFF aaa
+                amplitudeColor = Color(rgb=(ampValue*c1_r,ampValue*c1_g,ampValue*c1_b))
+                amplitudeColor2 = Color(rgb=(ampValue*c2_r,ampValue*c2_g,ampValue*c2_b))
                 
             #amplitudeColor = Color(hsv=(0.5,ampValue,ampValue))
             #amplitudeColor2 = Color(hsv=(0.75,ampValue,ampValue))
