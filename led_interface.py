@@ -128,7 +128,7 @@ def led_send(sobj,amplitude,colors):
     bitssent = sobj.write(send_data)
     time.sleep(0.044)
     sending = False
-    print("Successfully sent {} bytes".format(bitssent))
+    #print("Successfully sent {} bytes".format(bitssent))
     #time.sleep(0.005)
     #return send_data
     return
@@ -264,10 +264,10 @@ if __name__ == '__main__':
             if config == 0:
                 amplitudeColor = Color(rgb=(ampValue,0,0))
                 amplitudeColor2 = Color(rgb=(0,ampValue,0))
-            elif config == 1:
+            elif config == 2:
                 amplitudeColor = Color(rgb=(0,ampValue,ampValue))
                 amplitudeColor2 = Color(rgb=(0,0,ampValue))
-            elif config == 2:
+            elif config == 1:
                 amplitudeColor = Color(rgb=(ampValue,ampValue*0.6,ampValue*0.4))
                 amplitudeColor2 = Color(rgb=(ampValue,ampValue*0.6,ampValue*0.4))
             elif config == 3:
