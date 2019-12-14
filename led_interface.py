@@ -6,7 +6,11 @@ import collections
 import subprocess
 from datetime import datetime
 from scipy import signal
-
+import ast
+import json
+from websocket import create_connection
+import phue
+import thread
 
 global sending
 global decoded
@@ -72,10 +76,11 @@ def whitecorrect(inList):
     return outList
 
 def add_runner(inList, pos, val, width):
+    global num_leds
     for i in range(width):
-        inList[1+((pos+i)%454)*3] = min(255,2*val)
-        inList[2+((pos+i)%454)*3] = min(255,2*val)
-        inList[3+((pos+i)%454)*3] = min(255,2*val)
+        inList[1+((pos+i)%(num_leds/3))*3] = min(255,2*val)
+        inList[2+((pos+i)%(num_leds/3))*3] = min(255,2*val)
+        inList[3+((pos+i)%(num_leds/3))*3] = min(255,2*val)
 
 def now():
     return float(datetime.now().strftime('%s.%f'))
@@ -83,6 +88,8 @@ def now():
 def led_send(sobj,amplitude,colors):
     global some_modulus
     global sending
+    global num_leds
+    to_kill = 9
     #if sending == True:
     #    return
     raw_list = []
@@ -99,20 +106,23 @@ def led_send(sobj,amplitude,colors):
         raw_list.append(int(elem[4:6],16))
         #raw_list.append(int('00',16))   
     whitecorrect_list = whitecorrect(raw_list)
-    raw_list = raw_list*75 + whitecorrect_list*(150) + [0]*12
+    raw_list = raw_list*((num_leds-12)/len(raw_list)) + [0]*(12)
     #print(repr(raw_list))
     #raw_list = [0] + [255]*1359
     #print(some_modulus)
     raw_list = [0] + raw_list
-    add_runner(raw_list,some_modulus%1362,int(255*ampValue),10)
+    add_runner(raw_list,some_modulus%num_leds,int(255*ampValue),10)
     
-    add_runner(raw_list,(some_modulus+150)%1362,int(255*ampValue),10)
+    add_runner(raw_list,(some_modulus+150)%num_leds,int(255*ampValue),10)
     
-    add_runner(raw_list,(some_modulus+300)%1362,int(255*ampValue),10)
+    add_runner(raw_list,(some_modulus+300)%num_leds,int(255*ampValue),10)
     
     #thislist = 150*[128]+1200*[0]
     #send_data = bytearray([0]+rotated_list)
     raw_list = addnoise(raw_list)
+    raw_list[len(raw_list)-to_kill:len(raw_list)] = to_kill*[0] 
+    #a[len(a)-4:len(a)] = 4*[0]
+
     send_data = bytearray(raw_list)
     #send_data = bytearray([0] + raw_list*1350)
     #raw_list = 1350*[20]
@@ -160,6 +170,41 @@ def reloadColors():
         return [1.0, 1.0, 1.0, 0.5, 0.5, 0]
     return [1.0, 1.0, 1.0, 0.5, 0.5, 0]
 
+def reloadConfig():
+    try:
+        with open('led_config.cfg', 'r') as fd:
+            # this is dangerous but whatever
+            config = ast.literal_eval(fd.read())
+    except Exception as e:
+        print(e)
+        config = { 'mode': 'static' }
+    return config
+
+def send_to_network(color1, color2):
+    global ws
+    colorsToSend = {
+        "setVars" : {
+        'r1' :  color1.red,
+        'g1' :  color1.green,
+        'b1' :  color1.blue,
+        'r2' :  color2.red,
+        'g2' :  color2.green,
+        'b2' :  color2.blue,
+        'adjust': lightConfig['adjust'],
+        }
+    }
+    ws.send(json.dumps(colorsToSend))
+    return
+
+def hue_send(index, inColor):
+    global lights
+    hueHue = int(inColor.hue*65535)
+    hueSaturation = int(inColor.saturation*254)
+    hueBrightness = int(inColor.luminance*128)
+    lights[index].hue = hueHue
+    lights[index].saturation = hueSaturation
+    lights[index].brightness = hueBrightness
+
 if __name__ == '__main__':
     import pyaudio
     global decoded
@@ -167,11 +212,42 @@ if __name__ == '__main__':
     global some_modulus
     global lastconfigchange
     global b, a
+    global websocket_connected
+    global ws
+    global num_leds
+    global lightConfig
+    global lights
+    num_leds = 1350+12
     decoded = None
+    lightConfig = {'mode': 'static', 'amplitude': 0.5}
     # Setup code
     #ser = serial.Serial('/dev/ttyAMA0', 2000000, rtscts=1, writeTimeout=0)
     ser = serial.Serial('/dev/ttyACM0', 500000, writeTimeout=0)
+    # websocket connection
+    try:
+        ws = create_connection("ws://192.168.1.24:81")
+        websocket_connected = True
+    except Exception as e:
+        print(e)
+        websocket_connected = False
     #print(ser.read(ser.in_waiting))
+    
+    huebridge = phue.Bridge('192.168.1.100')
+    try:
+        print("Connecting to hue...")
+        huebridge.connect()
+        print("Connected!")
+    except Exeption as e:
+        print("{}".format(e))
+        bridgeEnabled = False
+    huebridge.set_light([1,3,4], 'on', True, transitiontime=0)
+    lights = huebridge.get_light_objects()
+    lights.pop(1)
+    print(lights)
+    for light in lights:
+        light.transitiontime = 0 
+    last_hue_c = Color(rgb=(0,0,0))
+    last_hue_c2 = Color(rgb=(0,0,0))
     print(ser.readline())
     minVal = 1
     maxVal = 0
@@ -179,14 +255,14 @@ if __name__ == '__main__':
     k = 0
     some_modulus = 0
     b, a = signal.butter(5, 100.0/(0.5*48000), btype='lowpass')
-    rollingArray = collections.deque(maxlen=100)
-    rollingArraySmall = collections.deque(maxlen=5)
+    rollingArray = collections.deque(maxlen=8)
+    rollingArraySmall = collections.deque(maxlen=3)
     rollingArray.append(0.0)
     rollingArraySmall.append(0.0)
     badcount = 0
     WIDTH = 2
     CHANNELS = 2
-    RATE = 48000
+    RATE = 32000
     FORMAT = pyaudio.paFloat32
     c1_r, c1_g, c1_b, c2_r, c2_g, c2_b = reloadColors()
     numpy.seterr(all='raise')
@@ -194,8 +270,9 @@ if __name__ == '__main__':
     old_decoded = None
     sending = False
     lastconfigchange = now()
+    b, a = signal.butter(5, 100/(0.5*RATE), btype='lowpass')
+    paobj = pyaudio.PyAudio()
     while (auto_restart):
-        paobj = pyaudio.PyAudio()
         stream = paobj.open(format=FORMAT,
                         channels=CHANNELS,
                         rate=RATE,
@@ -207,6 +284,22 @@ if __name__ == '__main__':
         config = 4 
         waiting = False
         while stream.is_active():
+            lightConfig = reloadConfig()
+            #print(lightConfig)
+            try:
+                if lightConfig['mode'] == 'music' and lightConfig['decay_len']:
+                    if len(rollingArray) != lightConfig['decay_len']:
+                        newRollingArray = collections.deque(maxlen=lightConfig['decay_len'])
+                        newRollingArray += rollingArray
+                        rollingArray = newRollingArray
+                if lightConfig['mode'] == 'music' and lightConfig['decay_len_s']:
+                    if len(rollingArraySmall) != lightConfig['decay_len_s']:                
+                        newRollingArraySmall = collections.deque(maxlen=lightConfig['decay_len_s'])
+                        newRollingArraySmall += rollingArraySmall
+                        rollingArraySmall = newRollingArraySmall
+            except Exception as e:
+                print("Failed to set decay length")
+                print(e)
             if type(decoded) == type(None):
                 if waiting == False:
                     print("Waiting for stream", end ="")
@@ -214,6 +307,8 @@ if __name__ == '__main__':
                 else:
                     print(".", end="")
                 continue
+            else:
+                last_decoded = decoded
             waiting = False
             currtime = now()
             if (currtime - lastconfigchange) > 10:
@@ -224,7 +319,7 @@ if __name__ == '__main__':
             if (currtime - lastcallback) > 0.25:
                 print("BAD!")
                 badcount += 1
-                if badcount > 5:
+                if badcount > 2:
                     badcount = 0
                     break
             if n == 20:
@@ -233,11 +328,10 @@ if __name__ == '__main__':
             n = (n+1)%40
             #print(k,n)
             #filtered = decoded
-            #b, a = signal.butter(5, 100/(0.5*48000), btype='lowpass')
             #filtered = signal.filtfilt(b,a,decoded)
             #amplitude = numpy.sqrt(numpy.mean(numpy.square(filtered)))
-            #filtamplitude = numpy.sum(numpy.absolute(filtered))
-            amplitude = numpy.sum(numpy.absolute(decoded))
+            #amplitude = numpy.sum(numpy.absolute(filtered))
+            amplitude = numpy.sum(numpy.absolute(last_decoded))
             #print("FIL: {}".format(amplitude))
             #print("RAW: {}\n".format(rawamplitude))
             rollingArray.append(amplitude)
@@ -256,28 +350,57 @@ if __name__ == '__main__':
             amplitude = sum(rollingArraySmall)/len(rollingArraySmall)
             #amplitudeColor = Color(hsl=(0, 0, (amplitude/(maxVal-minVal))))
             try: 
-                ampValue = (min(1,(amplitude-minVal)/(maxVal-minVal))) 
+                # pulse mode
+                if lightConfig['mode'] == 'pulse':
+                    pulsewidth = lightConfig['pulsewidth']
+                    interp = some_modulus % pulsewidth
+                    ampValue = (1-(interp/float(pulsewidth))) if interp > pulsewidth/2 else (interp/float(pulsewidth))
+                elif lightConfig['mode'] == 'static':
+                    # static mode
+                    ampValue = lightConfig['amplitude']
+                elif lightConfig['mode'] == 'music':
+                    # music mode 
+                    ampValue = (min(1,(amplitude-minVal)/(maxVal-minVal))) 
             except Exception as e:
                 print("aaaa something went wrong in the stream, restarting")
                 break
             #print(ampValue)
             if config == 0:
+                ac = Color(rgb=(1,0,0))
+                ac2 = Color(rgb=(0,1,0))
                 amplitudeColor = Color(rgb=(ampValue,0,0))
                 amplitudeColor2 = Color(rgb=(0,ampValue,0))
             elif config == 2:
                 amplitudeColor = Color(rgb=(0,ampValue,ampValue))
                 amplitudeColor2 = Color(rgb=(0,0,ampValue))
+                ac = Color(rgb=(0,1,1))
+                ac2 = Color(rgb=(0,0,1))
             elif config == 1:
+                ac = Color(rgb=(1,0.6,0.4))
+                ac2 = Color(rgb=(1,0.6,0.4))
                 amplitudeColor = Color(rgb=(ampValue,ampValue*0.6,ampValue*0.4))
                 amplitudeColor2 = Color(rgb=(ampValue,ampValue*0.6,ampValue*0.4))
             elif config == 3:
+                ac = Color(rgb=(1,1,1))
+                ac2 = Color(rgb=(0.6,0.6,0.6))
                 amplitudeColor =  Color(rgb=(ampValue,ampValue,ampValue))
                 amplitudeColor2 =  Color(rgb=(ampValue*0.6,ampValue*0.6,ampValue*0.6))
             else:
                 # CUSTOM COLORS BASED OFF OF STUFF aaa
+                ac = Color(rgb=(c1_r,c1_g,c1_b))
+                ac2 = Color(rgb=(c2_r,c2_g,c2_b))
                 amplitudeColor = Color(rgb=(ampValue*c1_r,ampValue*c1_g,ampValue*c1_b))
                 amplitudeColor2 = Color(rgb=(ampValue*c2_r,ampValue*c2_g,ampValue*c2_b))
                 
+            if last_hue_c != ac:
+                # send new colors to hue
+                last_hue_c = ac
+                thread.start_new_thread(hue_send, (0, last_hue_c))
+                thread.start_new_thread(hue_send, (1, last_hue_c))
+            if last_hue_c2 != ac2:
+                last_hue_c2 = ac2
+                # send new colors to hue
+                thread.start_new_thread(hue_send, (2, last_hue_c2))
             #amplitudeColor = Color(hsv=(0.5,ampValue,ampValue))
             #amplitudeColor2 = Color(hsv=(0.75,ampValue,ampValue))
             pattern1 = ([amplitudeColor.hex_l] + [amplitudeColor2.hex_l])
@@ -288,15 +411,22 @@ if __name__ == '__main__':
             else:
                 colorList = pattern2
                 colorList2 = pattern1
+            # send pattern to wireless strips
+            if websocket_connected:
+                if k:
+                    send_to_network(amplitudeColor, amplitudeColor2)
+                else:
+                    send_to_network(amplitudeColor2, amplitudeColor)
             #print(colorList)
             #led_send(ser, 6, colorList)
             #time.sleep(0.005)
             #time.sleep(0.025)
             led_send(ser, ampValue, colorList)
             #time.sleep(0.050)
+        print("auto restarting")
         stream.stop_stream()
         stream.close()
-        paobj.terminate()
+        #paobj.terminate()
 
     '''
     color_red = 'FF0000'
