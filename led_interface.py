@@ -15,37 +15,8 @@ import thread
 global sending
 global decoded
 global lastcallback
-global some_modulus
+global runner_modulus
 global b,a
-
-
-def pya_nightlight_callback(in_data, frame_count, time_info, status):
-    global ser
-    global n # tripped value
-    global k # timer
-    global rollingArray
-    global rollingArraySmall
-    decoded = numpy.fromstring(in_data, 'Float32')
-    amplitude = numpy.sqrt(numpy.mean(numpy.square(decoded)))
-    rollingArraySmall.append(amplitude)
-    rollingArray.append(amplitude)
-    noise_floor = sum(rollingArray)/len(rollingArray)
-    amplitude = sum(rollingArraySmall)/len(rollingArraySmall)
-    k = (k-1) if k > 0 else 0
-    if amplitude > 0.05:
-        n = 1
-        k = 250
-    amplitudeColor = Color(rgb=(0,k/500.0,0)).hex_l
-    colorList = [amplitudeColor] * 10
-    #print noise_floor, amplitude
-    if n == 1:
-        led_send(ser, 5, colorList)
-        #time.sleep(0.025)
-        #time.sleep(0.005)
-        led_send(ser, 6, colorList)
-        if k == 0:
-            n = 0
-    return (in_data, pyaudio.paContinue)
 
 def pya_callback(in_data, frame_count, time_info, status):
     config = 0
@@ -86,7 +57,7 @@ def now():
     return float(datetime.now().strftime('%s.%f'))
 
 def led_send(sobj,amplitude,colors):
-    global some_modulus
+    global runner_modulus
     global sending
     global num_leds
     to_kill = 9
@@ -105,17 +76,21 @@ def led_send(sobj,amplitude,colors):
         raw_list.append(int(elem[2:4],16))
         raw_list.append(int(elem[4:6],16))
         #raw_list.append(int('00',16))   
-    whitecorrect_list = whitecorrect(raw_list)
-    raw_list = raw_list*((num_leds-12)/len(raw_list)) + [0]*(12)
+    #print(len(raw_list))
+    # whitecorrect_list = whitecorrect(raw_list)
+    raw_list = (raw_list*(int(round((num_leds-12)/float(len(raw_list))))))[0:num_leds-12]
+    #print(len(raw_list))
+    assert len(raw_list) == num_leds-12
+    raw_list += [0]*(12)
     #print(repr(raw_list))
     #raw_list = [0] + [255]*1359
-    #print(some_modulus)
+    #print(runner_modulus)
     raw_list = [0] + raw_list
-    add_runner(raw_list,some_modulus%num_leds,int(255*ampValue),10)
+    add_runner(raw_list,runner_modulus%num_leds,int(255*ampValue),10)
     
-    add_runner(raw_list,(some_modulus+150)%num_leds,int(255*ampValue),10)
+    add_runner(raw_list,(runner_modulus+150)%num_leds,int(255*ampValue),10)
     
-    add_runner(raw_list,(some_modulus+300)%num_leds,int(255*ampValue),10)
+    add_runner(raw_list,(runner_modulus+300)%num_leds,int(255*ampValue),10)
     
     #thislist = 150*[128]+1200*[0]
     #send_data = bytearray([0]+rotated_list)
@@ -126,8 +101,8 @@ def led_send(sobj,amplitude,colors):
     send_data = bytearray(raw_list)
     #send_data = bytearray([0] + raw_list*1350)
     #raw_list = 1350*[20]
-    #raw_list[some_modulus%len(raw_list)] = 128
-    some_modulus += 1
+    #raw_list[runner_modulus%len(raw_list)] = 128
+    runner_modulus += 2
     #send_data = bytearray([0]+raw_list)
     #print(send_data)
     #print(repr(send_data) + str(len(send_data)))
@@ -136,7 +111,7 @@ def led_send(sobj,amplitude,colors):
     sending = True
     #print(sobj.read(sobj.in_waiting))
     bitssent = sobj.write(send_data)
-    time.sleep(0.044)
+    time.sleep(0.040)
     sending = False
     #print("Successfully sent {} bytes".format(bitssent))
     #time.sleep(0.005)
@@ -180,17 +155,13 @@ def reloadConfig():
         config = { 'mode': 'static' }
     return config
 
-def send_to_network(color1, color2):
+def send_to_network(colorList):
     global ws
     colorsToSend = {
         "setVars" : {
-        'r1' :  color1.red,
-        'g1' :  color1.green,
-        'b1' :  color1.blue,
-        'r2' :  color2.red,
-        'g2' :  color2.green,
-        'b2' :  color2.blue,
         'adjust': lightConfig['adjust'],
+        'numColors' : len(colorList),
+        'colorList' : [elem for sublist in [list(elem.rgb) for elem in colorList] for elem in sublist]
         }
     }
     ws.send(json.dumps(colorsToSend))
@@ -209,7 +180,7 @@ if __name__ == '__main__':
     import pyaudio
     global decoded
     global lastcallback
-    global some_modulus
+    global runner_modulus
     global lastconfigchange
     global b, a
     global websocket_connected
@@ -217,6 +188,8 @@ if __name__ == '__main__':
     global num_leds
     global lightConfig
     global lights
+    global bridgeEnabled
+    bridgeEnabled = False
     num_leds = 1350+12
     decoded = None
     lightConfig = {'mode': 'static', 'amplitude': 0.5}
@@ -232,10 +205,12 @@ if __name__ == '__main__':
         websocket_connected = False
     #print(ser.read(ser.in_waiting))
     
+    '''
     huebridge = phue.Bridge('192.168.1.100')
     try:
         print("Connecting to hue...")
         huebridge.connect()
+        bridgeEnabled = True
         print("Connected!")
     except Exeption as e:
         print("{}".format(e))
@@ -248,13 +223,15 @@ if __name__ == '__main__':
         light.transitiontime = 0 
     last_hue_c = Color(rgb=(0,0,0))
     last_hue_c2 = Color(rgb=(0,0,0))
+    '''
+
     print(ser.readline())
     minVal = 1
     maxVal = 0
     n = 0
     k = 0
-    some_modulus = 0
-    b, a = signal.butter(5, 100.0/(0.5*48000), btype='lowpass')
+    runner_modulus = 0
+    b, a = signal.butter(5, 250.0/(0.5*48000), btype='lowpass')
     rollingArray = collections.deque(maxlen=8)
     rollingArraySmall = collections.deque(maxlen=3)
     rollingArray.append(0.0)
@@ -262,7 +239,7 @@ if __name__ == '__main__':
     badcount = 0
     WIDTH = 2
     CHANNELS = 2
-    RATE = 32000
+    RATE = 48000
     FORMAT = pyaudio.paFloat32
     c1_r, c1_g, c1_b, c2_r, c2_g, c2_b = reloadColors()
     numpy.seterr(all='raise')
@@ -281,7 +258,7 @@ if __name__ == '__main__':
                         stream_callback=pya_callback)
         #                stream_callback=pya_nightlight_callback)
         stream.start_stream()
-        config = 4 
+        config = 1 
         waiting = False
         while stream.is_active():
             lightConfig = reloadConfig()
@@ -328,10 +305,10 @@ if __name__ == '__main__':
             n = (n+1)%40
             #print(k,n)
             #filtered = decoded
-            #filtered = signal.filtfilt(b,a,decoded)
+            filtered = signal.filtfilt(b,a,decoded)
             #amplitude = numpy.sqrt(numpy.mean(numpy.square(filtered)))
-            #amplitude = numpy.sum(numpy.absolute(filtered))
-            amplitude = numpy.sum(numpy.absolute(last_decoded))
+            amplitude = numpy.sum(numpy.absolute(filtered))
+            #amplitude = numpy.sum(numpy.absolute(last_decoded))
             #print("FIL: {}".format(amplitude))
             #print("RAW: {}\n".format(rawamplitude))
             rollingArray.append(amplitude)
@@ -353,7 +330,7 @@ if __name__ == '__main__':
                 # pulse mode
                 if lightConfig['mode'] == 'pulse':
                     pulsewidth = lightConfig['pulsewidth']
-                    interp = some_modulus % pulsewidth
+                    interp = runner_modulus % pulsewidth
                     ampValue = (1-(interp/float(pulsewidth))) if interp > pulsewidth/2 else (interp/float(pulsewidth))
                 elif lightConfig['mode'] == 'static':
                     # static mode
@@ -365,58 +342,62 @@ if __name__ == '__main__':
                 print("aaaa something went wrong in the stream, restarting")
                 break
             #print(ampValue)
+            ac_list = []
+            static_color_list = []
             if config == 0:
-                ac = Color(rgb=(1,0,0))
-                ac2 = Color(rgb=(0,1,0))
-                amplitudeColor = Color(rgb=(ampValue,0,0))
-                amplitudeColor2 = Color(rgb=(0,ampValue,0))
+                static_color_list.append(Color(rgb=(1,0,0)))
+                static_color_list.append(Color(rgb=(0,1,0)))
+                ac_list.append(Color(rgb=(ampValue,0,0)))
+                ac_list.append(Color(rgb=(0,ampValue,0)))
             elif config == 2:
-                amplitudeColor = Color(rgb=(0,ampValue,ampValue))
-                amplitudeColor2 = Color(rgb=(0,0,ampValue))
-                ac = Color(rgb=(0,1,1))
-                ac2 = Color(rgb=(0,0,1))
+                ac_list.append(Color(rgb=(0,ampValue,ampValue)))
+                ac_list.append(Color(rgb=(0,0,ampValue)))
+                static_color_list.append(Color(rgb=(0,1,1)))
+                static_color_list.append(Color(rgb=(0,0,1)))
             elif config == 1:
-                ac = Color(rgb=(1,0.6,0.4))
-                ac2 = Color(rgb=(1,0.6,0.4))
-                amplitudeColor = Color(rgb=(ampValue,ampValue*0.6,ampValue*0.4))
-                amplitudeColor2 = Color(rgb=(ampValue,ampValue*0.6,ampValue*0.4))
+                static_color_list.append(Color(rgb=(1,0,0)))
+                static_color_list.append(Color(rgb=(0,1,0)))
+                static_color_list.append(Color(rgb=(0,0,1)))
+                ac_list.append(Color(rgb=(ampValue,0,0)))
+                ac_list.append(Color(rgb=(0,ampValue,0)))
+                ac_list.append(Color(rgb=(0,0,ampValue)))
             elif config == 3:
-                ac = Color(rgb=(1,1,1))
-                ac2 = Color(rgb=(0.6,0.6,0.6))
-                amplitudeColor =  Color(rgb=(ampValue,ampValue,ampValue))
-                amplitudeColor2 =  Color(rgb=(ampValue*0.6,ampValue*0.6,ampValue*0.6))
+                static_color_list.append(Color(rgb=(1,1,1)))
+                static_color_list.append(Color(rgb=(0.6,0.6,0.6)))
+                ac_list.append( Color(rgb=(ampValue,ampValue,ampValue)))
+                ac_list.append( Color(rgb=(ampValue*0.6,ampValue*0.6,ampValue*0.6)))
             else:
                 # CUSTOM COLORS BASED OFF OF STUFF aaa
-                ac = Color(rgb=(c1_r,c1_g,c1_b))
-                ac2 = Color(rgb=(c2_r,c2_g,c2_b))
-                amplitudeColor = Color(rgb=(ampValue*c1_r,ampValue*c1_g,ampValue*c1_b))
-                amplitudeColor2 = Color(rgb=(ampValue*c2_r,ampValue*c2_g,ampValue*c2_b))
+                static_color_list.append(Color(rgb=(c1_r,c1_g,c1_b)))
+                static_color_list.append(Color(rgb=(c2_r,c2_g,c2_b)))
+                ac_list.append(Color(rgb=(ampValue*c1_r,ampValue*c1_g,ampValue*c1_b)))
+                ac_list.append(Color(rgb=(ampValue*c2_r,ampValue*c2_g,ampValue*c2_b)))
                 
-            if last_hue_c != ac:
-                # send new colors to hue
-                last_hue_c = ac
-                thread.start_new_thread(hue_send, (0, last_hue_c))
-                thread.start_new_thread(hue_send, (1, last_hue_c))
-            if last_hue_c2 != ac2:
-                last_hue_c2 = ac2
-                # send new colors to hue
-                thread.start_new_thread(hue_send, (2, last_hue_c2))
-            #amplitudeColor = Color(hsv=(0.5,ampValue,ampValue))
-            #amplitudeColor2 = Color(hsv=(0.75,ampValue,ampValue))
-            pattern1 = ([amplitudeColor.hex_l] + [amplitudeColor2.hex_l])
-            pattern2 = ([amplitudeColor2.hex_l] + [amplitudeColor.hex_l])
-            if k:
-                colorList = pattern1
-                colorList2 = pattern2
+            # Hue bulb integration
+              
+            if(bridgeEnabled):
+                if last_hue_c != static_color_list[0]:
+                    # send new colors to hue
+                    last_hue_c = static_color_list[0]
+                    thread.start_new_thread(hue_send, (0, last_hue_c))
+                    thread.start_new_thread(hue_send, (1, last_hue_c))
+                if last_hue_c2 != static_color_list[1]:
+                    last_hue_c2 = static_color_list[1]
+                    # send new colors to hue
+                    thread.start_new_thread(hue_send, (2, last_hue_c2))
+            if config == 1:
+                pattern = (elem.hex_l for elem in ac_list)
+                #print(pattern)
             else:
-                colorList = pattern2
-                colorList2 = pattern1
+                if k:
+                    ac_list.reverse()
+                pattern = ([ac_list[0].hex_l] + [ac_list[1].hex_l])
+            colorList = pattern
             # send pattern to wireless strips
             if websocket_connected:
-                if k:
-                    send_to_network(amplitudeColor, amplitudeColor2)
-                else:
-                    send_to_network(amplitudeColor2, amplitudeColor)
+                # this is WAY TOO STROBEY
+                #send_to_network(ac_list)
+                send_to_network(static_color_list)
             #print(colorList)
             #led_send(ser, 6, colorList)
             #time.sleep(0.005)
