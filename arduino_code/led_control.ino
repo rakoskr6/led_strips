@@ -1,11 +1,11 @@
 #include <FastLED.h>
 
 #define LED_PIN               5
-#define NUM_LEDS              454
+#define NUM_LEDS              300
 #define SERIAL_BUFF_SIZE      (NUM_LEDS*3 + 1) // +1 for the command  
 #define BRIGHTNESS            255 // currently not used
-#define LED_TYPE              WS2811
-#define COLOR_ORDER           GRB 
+#define LED_TYPE              WS2812B
+#define COLOR_ORDER           GRB
 #define ENABLE_DEBUG_MSGS     0
 #define DELAY                 100
 
@@ -14,7 +14,7 @@ uint8_t startIndex = 0;
 CRGB leds[NUM_LEDS];
 
 void fillLEDs(char r, char g, char b);
-
+void FillLEDsWithChristmas(); // Alternates red and green LEDs 
 
 // Color Palette stuff
 CRGBPalette16 currentPalette;
@@ -36,6 +36,13 @@ void setup() {
   fillLEDs(0, 0, 0);
   delay(200);
   FillLEDsWithChristmas();
+  delay(200);
+  fillLEDs(0, 0, 255);
+  delay(200);
+  FillLEDsWithChristmas();
+  delay(200);
+  fillLEDs(0, 0, 0);
+
   
   //if (ENABLE_DEBUG_MSGS) {
     Serial.println("Program Started");
