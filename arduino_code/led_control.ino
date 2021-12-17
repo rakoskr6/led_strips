@@ -35,10 +35,10 @@ void setup() {
   // Startup sequence to indicate bootup complete
   fillLEDs(0, 0, 0);
   delay(200);
-  FillLEDsWithChristmas();
-  delay(200);
-  fillLEDs(0, 0, 255);
-  delay(200);
+  // FillLEDsWithChristmas();
+  // delay(200);
+  // fillLEDs(0, 0, 255);
+  // delay(200);
   FillLEDsWithChristmas();
   delay(200);
   fillLEDs(0, 0, 0);
@@ -63,11 +63,11 @@ void FillLEDsWithChristmas() { // Alternates red and green LEDs
   int x = 0;
   for (int i=0; i < NUM_LEDS; i++) {
     if (x == 0) {
-      leds[i].setRGB(255, 0, 0);
+      leds[i].setRGB(55, 0, 0);
       x = 1;
     }
     else {
-      leds[i].setRGB(0, 255, 0);
+      leds[i].setRGB(0, 55, 0);
       x = 0;
     }
    }
@@ -92,7 +92,9 @@ void fillLEDsFromPaletteColors( uint8_t colorIndex)
  */
 void processBuffer(char *buff) {
   int count = 0;
-  int i = 1, j = 2, k = 3;
+  int i = 1;
+  int j = 2; 
+  int k = 3;
   int red, green, blue;
   char command = buff[0];
   
@@ -113,16 +115,17 @@ void processBuffer(char *buff) {
   
             if (ENABLE_DEBUG_MSGS == 1) {
               Serial.print("Count = ");
-              Serial.println(count);
+              Serial.println(int(count));
               Serial.print("LED i = " );
-              Serial.println(red);
+              Serial.println(int(red));
               Serial.print("LED j = ");
-              Serial.println(green);
+              Serial.println(int(green));
               Serial.print("LED k = ");
-              Serial.println(blue);
+              Serial.println(int(blue));
             }
   
       leds[count].setRGB(red, green, blue);
+      //leds[count].setRGB(200*(count%2), 200*((count+1)%2), 0);
   
       i += 3;
       j += 3;
@@ -139,7 +142,7 @@ void processBuffer(char *buff) {
   int numBytesToRead;
   
 void loop() {
-  char serialBuff[SERIAL_BUFF_SIZE];
+  char serialBuff[SERIAL_BUFF_SIZE+30];
   char ch;
   
   startIndex = startIndex + 1;  
@@ -165,7 +168,7 @@ void loop() {
         Serial.print("serialBuff[");
         Serial.print((buffPos ));
         Serial.print("] = ");
-        Serial.println(serialBuff[(buffPos)]);       
+        Serial.println(int(serialBuff[buffPos]));       
       }
       //Serial.println("Clear buffer");
       processBuffer(serialBuff);
@@ -178,7 +181,7 @@ void loop() {
         Serial.print("serialBuff[");
         Serial.print((buffPos ));
         Serial.print("] = ");
-        Serial.println(serialBuff[(buffPos)]);       
+        Serial.println(int(serialBuff[buffPos]));       
       }   
     }
 
