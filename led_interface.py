@@ -131,7 +131,7 @@ def led_send(sobj,amplitude,colors):
 
     if lightConfig['load_image']:
         # cast so we don't overwrite it
-        if image_is_gif and type(image_pixel_list[0]) == list:
+        if image_is_gif and isinstance(image_pixel_list[0], list):
             raw_list = list(image_pixel_list[(gif_modulus//lightConfig['gif_delay'])%len(image_pixel_list)])
         else:
             raw_list = list(image_pixel_list)
@@ -354,7 +354,7 @@ if __name__ == '__main__':
             huebridge.connect()
             bridgeEnabled = True
             print("Connected!")
-        except Exeption as e:
+        except Exception as e:
             print("{}".format(e))
             bridgeEnabled = False
         huebridge.set_light([1,3,4], 'on', True, transitiontime=0)
@@ -405,7 +405,6 @@ if __name__ == '__main__':
                         input=True,
                         output=True,
                         stream_callback=pya_callback)
-        #                stream_callback=pya_nightlight_callback)
         stream.start_stream()
         config = 1 
         waiting = False
@@ -422,7 +421,7 @@ if __name__ == '__main__':
                 lightConfig = new_lightConfig
                 if last_image != lightConfig['image_path']:
                     print("Loading new image file: {}".format(lightConfig['image_path']))
-                    if '.gif' in lightConfig['image_path']: 
+                    if lightConfig['image_path'].endswith('.gif'):
                         image_is_gif = True
                     else:
                         image_is_gif = False
