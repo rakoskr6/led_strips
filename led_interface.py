@@ -15,6 +15,7 @@ import numpy
 import phue
 import serial
 import thread
+from PIL import Image
 from colour import Color
 from scipy import signal
 from websocket import create_connection
@@ -59,40 +60,46 @@ def add_runner(inList, pos, val, width):
 def now():
     return float(datetime.now().strftime('%s.%f'))
 
-def gen_image(image_path):
-    global image_is_gif
+def get_led_boundary_box():
+    """Returns a tuple of size 4 with the x/y coordinates of the LED boundaries"""
     from map import coord_index_map
-    from map import index_coord_map
-    from PIL import Image
     min_x = min([coord[0] for coord in coord_index_map.keys()])
     max_x = max([coord[0] for coord in coord_index_map.keys()])
     min_y = min([coord[1] for coord in coord_index_map.keys()])
     max_y = max([coord[1] for coord in coord_index_map.keys()])
-    bbox_lights = (min_x, min_y, max_x, max_y)
+    return min_x, min_y, max_x, max_y
+
+def get_image_boundary_box(image_path):
     image = Image.open(image_path)
     img_max_x, img_max_y = image.size
     bbox_image = (0, 0, img_max_x-1, img_max_y-1)
-    subpixels = [0]*900
+    return image, bbox_image
+
+def generate_frame(image, bbox_lights, bbox_image):
+    from map import coord_index_map
+    subpixels = [0] * 900
+    for coord in coord_index_map.keys():
+        pixel_index = coord_index_map[coord]
+        remapped_coords = remap_pixels(coord, bbox_lights, bbox_image)
+        subpixels[pixel_index * 3:pixel_index * 3 + 3] = image.getpixel(remapped_coords)
+    return subpixels
+
+def gen_image(image_path):
+    global image_is_gif
+    bbox_lights = get_led_boundary_box()
+    image, bbox_image = get_image_boundary_box(image_path)
     if image_is_gif and image.is_animated:
         # out_list is going to be a list of lists
         num_frames = image.n_frames
         out_list = []
         for i in range(num_frames):
-            subpixels = [0]*900
             image.seek(i)
             rgb_image = image.convert('RGB')
-            for coord in coord_index_map.keys():
-                pixel_index = coord_index_map[coord]
-                remapped_coords = remap_pixels(coord, bbox_lights, bbox_image)
-                subpixels[pixel_index*3:pixel_index*3+3] = rgb_image.getpixel(remapped_coords)
+            subpixels = generate_frame(rgb_image, bbox_lights, bbox_image)
             out_list.append([0] + list(subpixels))
-    else: 
-        for coord in coord_index_map.keys():
-            pixel_index = coord_index_map[coord]
-            remapped_coords = remap_pixels(coord, bbox_lights, bbox_image)
-            subpixels[pixel_index*3:pixel_index*3+3] = image.getpixel(remapped_coords)
-        out_list = [0] + subpixels
-    # print(out_list)
+    else:
+        subpixels = generate_frame(image, bbox_lights, bbox_image)
+        out_list = [0] + list(subpixels)
     return out_list
 
 # remap from coordinate plane 1 to plane 2
