@@ -112,3 +112,7 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+# local files
+network.cfg
+*.old

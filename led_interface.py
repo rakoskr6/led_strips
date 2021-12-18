@@ -11,6 +11,10 @@ import json
 from websocket import create_connection
 import phue
 import thread
+import configparser
+import os
+import time
+import traceback
 
 global sending
 global decoded
@@ -56,10 +60,72 @@ def add_runner(inList, pos, val, width):
 def now():
     return float(datetime.now().strftime('%s.%f'))
 
+def gen_image(image_path):
+    global image_is_gif
+    from map import coord_index_map
+    from map import index_coord_map
+    from PIL import Image
+    min_x = min([coord[0] for coord in coord_index_map.keys()])
+    max_x = max([coord[0] for coord in coord_index_map.keys()])
+    min_y = min([coord[1] for coord in coord_index_map.keys()])
+    max_y = max([coord[1] for coord in coord_index_map.keys()])
+    bbox_lights = (min_x, min_y, max_x, max_y)
+    image = Image.open(image_path)
+    img_max_x, img_max_y = image.size
+    bbox_image = (0, 0, img_max_x-1, img_max_y-1)
+    subpixels = [0]*900
+    if image_is_gif and image.is_animated:
+        # out_list is going to be a list of lists
+        num_frames = image.n_frames
+        out_list = []
+        for i in range(num_frames):
+            subpixels = [0]*900
+            image.seek(i)
+            rgb_image = image.convert('RGB')
+            for coord in coord_index_map.keys():
+                pixel_index = coord_index_map[coord]
+                remapped_coords = remap_pixels(coord, bbox_lights, bbox_image)
+                # print("Remapped {} to {}".format(coord, remapped_coords))
+                # print(image.getpixel(remapped_coords))
+                #print(subpixels)
+                #print(image.getpixel(remapped_coords))
+                subpixels[pixel_index*3:pixel_index*3+3] = rgb_image.getpixel(remapped_coords)
+            out_list.append([0] + list(subpixels))
+    else: 
+        for coord in coord_index_map.keys():
+            pixel_index = coord_index_map[coord]
+            remapped_coords = remap_pixels(coord, bbox_lights, bbox_image)
+            # print("Remapped {} to {}".format(coord, remapped_coords))
+            # if pixel_index > 240:
+            #     pixel_index += 0
+            # if pixel_index > 270:
+            #     pixel_index += 5
+            # if pixel_index > 280:
+            #     pixel_index += 15
+            subpixels[pixel_index*3:pixel_index*3+3] = image.getpixel(remapped_coords)
+        out_list = [0] + subpixels
+    # print(out_list)
+    return out_list
+
+# remap from coordinate plane 1 to plane 2
+def remap_pixels(coord, bbox_1, bbox_2):
+    min_x1, min_y1, max_x1, max_y1 = bbox_1
+    min_x2, min_y2, max_x2, max_y2 = bbox_2
+    x_in, y_in = coord
+    # print("bbox_1: {}, bbox_2: {}, coord: {}".format(bbox_1, bbox_2, coord))
+    x_out = int(((float(x_in-min_x1)/float(max_x1-min_x1))*float(max_x2-min_x2))+min_x2)
+    y_out = int(((float(y_in-min_y1)/float(max_y1-min_y1))*float(max_y2-min_y2))+min_y2)
+    return (x_out, y_out)
+    
+    
+
 def led_send(sobj,amplitude,colors):
     global runner_modulus
+    global gif_modulus
     global sending
     global num_leds
+    global image_pixel_list
+    global image_is_gif
     to_kill = 0
     #if sending == True:
     #    return
@@ -88,24 +154,46 @@ def led_send(sobj,amplitude,colors):
     raw_list = raw_list*(int(round((num_leds)/float(len(raw_list)))))
     raw_list = raw_list[0:num_leds]
     raw_list = [0] + raw_list
+    # print(raw_list[-10::])
 
-    '''
-    add_runner(raw_list,runner_modulus%num_leds,int(255*ampValue),10)
-    
-    add_runner(raw_list,(runner_modulus+150)%num_leds,int(255*ampValue),10)
-    
-    add_runner(raw_list,(runner_modulus+300)%num_leds,int(255*ampValue),10)
-    
+    if lightConfig['load_image']:
+        # cast so we don't overwrite it
+        if image_is_gif and type(image_pixel_list[0]) == list:
+            raw_list = list(image_pixel_list[(gif_modulus//5)%len(image_pixel_list)])
+        else:
+            raw_list = list(image_pixel_list)
+        # add amplitude for image mode
+        if lightConfig['mode'] != 'static':
+            amp = amplitude
+        else:
+            amp = lightConfig['amplitude']
+        for index in range(1,len(raw_list)):
+            raw_list[index] = int(min(255, raw_list[index]*amp))
+
+    runner_speed = 2
+    if lightConfig['use_runners'] == True:
+        runner_speed = lightConfig['runner_speed']
+        runner_len = lightConfig['runner_length']
+        num_runners = lightConfig['num_runners']
+        runner_distance = lightConfig['runner_distance']
+        for i in range(num_runners):
+            add_runner(raw_list,(runner_modulus+(runner_distance*i))%num_leds,int(255*ampValue),runner_len)
 
     #thislist = 150*[128]+1200*[0]
     #send_data = bytearray([0]+rotated_list)
-    '''
-
+    
+    debug_indexing = False
+    # input("Press enter for next")
+    # if debug_indexing:
+    #     raw_list = 900*[0]
+    #     print("index is {}".format(gif_modulus))
+    #     raw_list[(3*gif_modulus)%900:(3*gif_modulus+3)%900] = (255, 255, 255)
+    #     raw_list = [0] + raw_list
 
     global lightConfig
     if lightConfig['shimmer'] == True:
         raw_list = addnoise(raw_list)
-    # raw_list[len(raw_list)-to_kill:len(raw_list)] = to_kill*[0] 
+    raw_list[len(raw_list)-to_kill:len(raw_list)] = to_kill*[0] 
     #a[len(a)-4:len(a)] = 4*[0]
 
     # print("Sending length {} list".format(len(raw_list)))
@@ -113,7 +201,8 @@ def led_send(sobj,amplitude,colors):
     #send_data = bytearray([0] + raw_list*1350)
     #raw_list = 1350*[20]
     #raw_list[runner_modulus%len(raw_list)] = 128
-    runner_modulus += 2
+    runner_modulus = (runner_modulus+runner_speed%num_leds)
+    gif_modulus = (gif_modulus+1)%1000000
     #send_data = bytearray([0]+raw_list)
     #print(send_data)
     #print(repr(send_data) + str(len(send_data)))
@@ -121,10 +210,15 @@ def led_send(sobj,amplitude,colors):
     #print("attempting to send bits")
     sending = True
     #print(sobj.read(sobj.in_waiting))
+    # send_start = time.time()
+    ## DEBUG:
+    # send_data = bytearray([0] + [10,10,10]*300)
     bitssent = sobj.write(send_data)
-    time.sleep(0.040)
+    # send_end = time.time()
+    time.sleep(0.04)
+    # time.sleep(1.00)
     sending = False
-    #print("Successfully sent {} bytes".format(bitssent))
+    # print("Successfully sent {} bytes".format(bitssent))
     #time.sleep(0.005)
     #return send_data
     return
@@ -158,12 +252,13 @@ def reloadColors():
 
 def reloadConfig():
     try:
-        with open('led_config.cfg', 'r') as fd:
+        with open('config.json', 'r') as fd:
             # this is dangerous but whatever
-            config = ast.literal_eval(fd.read())
+            # config = ast.literal_eval(fd.read())
+            config = json.load(fd)
     except Exception as e:
-        print(e)
-        config = { 'mode': 'static' }
+        print("Error reloading config: " + str(e))
+        raise
     return config
 
 def send_to_network(colorList):
@@ -181,9 +276,10 @@ def send_to_network(colorList):
         print("Lost connection to websocket server, is it on?")
         # something went wrong here hahaha
         ws = None
-        print("attempting to reconnect")
-        ws = create_connection("ws://192.168.1.161:81")
-        ws.send(json.dumps(colorsToSend))
+        websocket_connected = False
+        # print("attempting to reconnect")
+        # ws = create_connection("ws://192.168.1.161:81")
+        # ws.send(json.dumps(colorsToSend))
     return
 
 def hue_send(index, inColor):
@@ -194,6 +290,14 @@ def hue_send(index, inColor):
     lights[index].hue = hueHue
     lights[index].saturation = hueSaturation
     lights[index].brightness = hueBrightness
+
+def heartbeat():
+    global pid
+    global last_heartbeat_time
+    currtime = int(time.time())
+    if last_heartbeat_time < currtime:
+        with open('status.log', 'w') as fd:
+            fd.write("{}\n{}\n".format(pid, currtime))
 
 if __name__ == '__main__':
     print("Starting LED strip interface")
@@ -209,6 +313,18 @@ if __name__ == '__main__':
     global lightConfig
     global lights
     global bridgeEnabled
+    global last_heartbeat_time
+    global pid
+    global image_pixel_list
+    # globals hurt me
+    global image_is_gif
+    pid = os.getpid()
+    last_heartbeat_time = int(time.time())
+    print("Starting on pid {} at time {}".format(pid, last_heartbeat_time))
+    heartbeat()
+    network_config = configparser.ConfigParser()
+    network_config.read('network.cfg')
+    print(network_config.sections())
     bridgeEnabled = False
     # num_leds = 1350+12
     # num_leds = 150+12
@@ -220,24 +336,33 @@ if __name__ == '__main__':
     ser = serial.Serial('/dev/ttyACM0', 500000, writeTimeout=0)
     #ser = serial.Serial('/dev/ttyAMA0', 500000, writeTimeout=0)
     # websocket connection for pixelblaze
-    use_pixelblaze = False
+    # Returned exception if pixel blaze not found, so added try - KR
+    try:
+        use_pixelblaze = network_config['pixelblaze'].getboolean('enabled')
+    except Exception as e:
+        use_pixelblaze = False
+
     ws = None
     if not use_pixelblaze:
-        print("Pixelblaze is disabled via use_pixelblaze")
+        print("Pixelblaze is disabled via network.cfg")
         ws = None
     if use_pixelblaze:
         try:
-            ws = create_connection("ws://192.168.1.161:81")
+            ws = create_connection("ws://" + network_config['pixelblaze']['address'])
             websocket_connected = True
         except Exception as e:
             print(e)
             websocket_connected = False
     #print(ser.read(ser.in_waiting))
-    use_hue = False
-    if not use_pixelblaze:
-        print("Philips Hue is disabled via use_hue")
+    # Returned exception if Hue not found, so added try - KR
+    try:
+        use_hue = network_config['phue'].getboolean('enabled')
+    except Exception as e:
+        use_hue = False
+    if not use_hue:
+        print("Philips Hue is disabled via network.cfg")
     if use_hue:
-        huebridge = phue.Bridge('192.168.1.100')
+        huebridge = phue.Bridge(network_config['phue']['address'])
         try:
             print("Connecting to hue...")
             huebridge.connect()
@@ -255,12 +380,14 @@ if __name__ == '__main__':
         last_hue_c = Color(rgb=(0,0,0))
         last_hue_c2 = Color(rgb=(0,0,0))
     
+    print("Starting serial connection to Arduino...")
     print(ser.readline())
     minVal = 1
     maxVal = 0
     n = 0
     k = 0
     runner_modulus = 0
+    gif_modulus = 0
     b, a = signal.butter(5, 250.0/(0.5*48000), btype='lowpass')
     rollingArray = collections.deque(maxlen=8)
     rollingArraySmall = collections.deque(maxlen=3)
@@ -279,6 +406,10 @@ if __name__ == '__main__':
     lastconfigchange = now()
     b, a = signal.butter(5, 100/(0.5*RATE), btype='lowpass')
     paobj = pyaudio.PyAudio()
+
+    image_is_gif = False
+    image_pixel_list = gen_image("./images/rainbowvert.png")
+    last_image = 'none'
     print("Starting processing loop")
     while (auto_restart):
         stream = paobj.open(format=FORMAT,
@@ -291,8 +422,29 @@ if __name__ == '__main__':
         stream.start_stream()
         config = 1 
         waiting = False
+        lightConfig = {'mode': 'static', 'amplitude': 1}
         while stream.is_active():
-            lightConfig = reloadConfig()
+            try:
+                heartbeat()
+            except Exception as e:
+                pass
+            try:
+                new_lightConfig = reloadConfig()
+                lightConfig = new_lightConfig
+                if last_image != lightConfig['image_path']:
+                    print("Loading new image file: {}".format(lightConfig['image_path']))
+                    if '.gif' in lightConfig['image_path']: 
+                        image_is_gif = True
+                    else:
+                        image_is_gif = False
+                    image_pixel_list_temp = gen_image(lightConfig['image_path'])
+                    # BAD because we are using globals, image_pixel_list needs to only change when it needs to
+                    image_pixel_list = image_pixel_list_temp
+                last_image = lightConfig['image_path']
+            except Exception:
+                print("Falling back to old lightConfig")
+                print(traceback.format_exc())
+                # don't update the config
             #print(lightConfig)
             try:
                 if lightConfig['mode'] == 'music' and lightConfig['decay_len']:
@@ -380,6 +532,9 @@ if __name__ == '__main__':
             # print(ampValue)
             ac_list = []
             static_color_list = []
+            # add global_brightness from config
+            if 'global_brightness' in lightConfig.keys():
+                ampValue = ampValue * lightConfig['global_brightness']
             if config == 0:
                 static_color_list.append(Color(rgb=(1,0,0)))
                 static_color_list.append(Color(rgb=(0,1,0)))
@@ -445,6 +600,9 @@ if __name__ == '__main__':
             #time.sleep(0.005)
             #time.sleep(0.025)
             led_send(ser, ampValue, colorList)
+            # while ser.in_waiting:
+            #     print(ser.readline())
+            # time.sleep(10.00)
             #time.sleep(0.050)
         print("auto restarting")
         stream.stop_stream()
