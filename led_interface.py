@@ -6,6 +6,7 @@ import configparser
 import json
 import logging
 import os
+import sys
 import time
 import traceback
 from datetime import datetime
@@ -19,9 +20,9 @@ from colour import Color
 from scipy import signal
 from websocket import create_connection
 
-
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+
 
 global sending
 global decoded
@@ -403,7 +404,7 @@ if __name__ == '__main__':
     image_pixel_list = gen_image("./images/rainbowvert.png")
     last_image = 'none'
     # initialize processing loop for everything
-    print("Starting processing loop")
+    logger.info("Starting processing loop")
     while (auto_restart):
         stream = paobj.open(format=FORMAT,
                         channels=AUDIO_CHANNELS,
@@ -416,7 +417,6 @@ if __name__ == '__main__':
         waiting = False
         lightConfig = {'mode': 'static', 'amplitude': 1}
         while stream.is_active():
-            logger.info("WHEEEEEEE")
             try:
                 # heartbeat every time we loop to keep the PHP dog happy
                 heartbeat()
@@ -427,7 +427,7 @@ if __name__ == '__main__':
                 new_lightConfig = reloadConfig()
                 lightConfig = new_lightConfig
                 if last_image != lightConfig['image_path']:
-                    print("Loading new image file: {}".format(lightConfig['image_path']))
+                    logger.info("Loading new image file: {}".format(lightConfig['image_path']))
                     if lightConfig['image_path'].endswith('.gif'):
                         image_is_gif = True
                     else:
@@ -437,8 +437,8 @@ if __name__ == '__main__':
                     image_pixel_list = image_pixel_list_temp
                 last_image = lightConfig['image_path']
             except Exception:
-                print("Falling back to old lightConfig")
-                print(traceback.format_exc())
+                logger.error("Falling back to old lightConfig")
+                logger.error(traceback.format_exc())
 
             # DSP dequeue for rolling amplitude calculation
             try:
@@ -453,8 +453,8 @@ if __name__ == '__main__':
                         newRollingArraySmall += rollingArraySmall
                         rollingArraySmall = newRollingArraySmall
             except Exception as e:
-                print("Failed to set decay length")
-                print(e)
+                logger.error("Failed to set decay length")
+                logger.error(e)
             if type(decoded) == type(None):
                 if waiting == False:
                     print("Waiting for stream", end ="")
@@ -472,7 +472,7 @@ if __name__ == '__main__':
                 p_time = 10
             if (currtime - lastconfigchange) > p_time:
                 config = (config+1)%5
-                print("Config is now {}".format(config))
+                logger.info("Config is now {}".format(config))
                 lastconfigchange = now()
             #print("Currtime: {0}".format(currtime))
             #print("Callback: {0}".format(lastcallback))
