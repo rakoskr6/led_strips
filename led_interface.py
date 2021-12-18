@@ -22,8 +22,8 @@ global lastcallback
 global runner_modulus
 global b,a
 
-def pya_callback(in_data, frame_count, time_info, status):
-    config = 0
+AUDIO_CHANNELS = 2
+
     global decoded
     global lastcallback, b, a
     lastcallback = float(datetime.now().strftime('%s.%f'))
@@ -410,7 +410,6 @@ if __name__ == '__main__':
     rollingArraySmall.append(0.0)
     badcount = 0
     WIDTH = 2
-    CHANNELS = 2
     RATE = 32000
     FORMAT = pyaudio.paFloat32
     c1_r, c1_g, c1_b, c2_r, c2_g, c2_b = reloadColors()
@@ -429,7 +428,7 @@ if __name__ == '__main__':
     print("Starting processing loop")
     while (auto_restart):
         stream = paobj.open(format=FORMAT,
-                        channels=CHANNELS,
+                        channels=AUDIO_CHANNELS,
                         rate=RATE,
                         input=True,
                         output=True,
