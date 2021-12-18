@@ -102,7 +102,13 @@ def remap_pixels(coord, bbox_1, bbox_2):
     y_out = int(((float(y_in-min_y1)/float(max_y1-min_y1))*float(max_y2-min_y2))+min_y2)
     return (x_out, y_out)
     
-    
+
+def debug_indexing(gif_modulus):
+    input("Press enter for next")
+    raw_list = 900*[0]
+    print("index is {}".format(gif_modulus))
+    raw_list[(3*gif_modulus)%900:(3*gif_modulus+3)%900] = (255, 255, 255)
+    return [0] + raw_list
 
 def led_send(sobj,amplitude,colors):
     global runner_modulus
@@ -126,12 +132,9 @@ def led_send(sobj,amplitude,colors):
         raw_list.append(int(elem[0:2],16))
         raw_list.append(int(elem[2:4],16))
         raw_list.append(int(elem[4:6],16))
-        #raw_list.append(int('00',16))   
-    #print(len(raw_list))
     raw_list = raw_list*(int(round((num_leds)/float(len(raw_list)))))
     raw_list = raw_list[0:num_leds]
     raw_list = [0] + raw_list
-    # print(raw_list[-10::])
 
     if lightConfig['load_image']:
         # cast so we don't overwrite it
@@ -160,18 +163,13 @@ def led_send(sobj,amplitude,colors):
     #send_data = bytearray([0]+rotated_list)
     
     debug_indexing = False
-    # input("Press enter for next")
-    # if debug_indexing:
-    #     raw_list = 900*[0]
-    #     print("index is {}".format(gif_modulus))
-    #     raw_list[(3*gif_modulus)%900:(3*gif_modulus+3)%900] = (255, 255, 255)
-    #     raw_list = [0] + raw_list
+    if debug_indexing:
+        raw_list = debug_indexing(gif_modulus)
 
     global lightConfig
     if lightConfig['shimmer'] == True:
         raw_list = addnoise(raw_list)
     raw_list[len(raw_list)-to_kill:len(raw_list)] = to_kill*[0] 
-    #a[len(a)-4:len(a)] = 4*[0]
 
     # print("Sending length {} list".format(len(raw_list)))
     send_data = bytearray(raw_list)
@@ -379,7 +377,6 @@ if __name__ == '__main__':
     k = 0
     runner_modulus = 0
     gif_modulus = 0
-    b, a = signal.butter(5, 250.0/(0.5*48000), btype='lowpass')
     rollingArray = collections.deque(maxlen=8)
     rollingArraySmall = collections.deque(maxlen=3)
     rollingArray.append(0.0)
@@ -529,16 +526,7 @@ if __name__ == '__main__':
             # add global_brightness from config
             if 'global_brightness' in lightConfig.keys():
                 ampValue = ampValue * lightConfig['global_brightness']
-            #if lightConfig['load_image']:
-            #        if type(image_pixel_list[0]) == list: 
-            #            sample_pixel = image_pixel_list[gif_modulus%lightConfig['gif_delay']]
-            #        else:
-            #            sample_pixel = image_pixel_list
-            #        for i in range(20):
-            #            sindex = (runner_modulus + i)%num_leds
-            #            static_color_list.append(Color(rgb=[elem/256.0 if elem > 0 else 0 for elem in sample_pixel[sindex*3:sindex*3+3]]))
-            #            ac_list.append(Color(rgb=[elem/256.0 if elem > 0 else 0 for elem in sample_pixel[sindex*3:sindex*3+3]]))
-            #else:
+
             # this config is just some predefined patterns we loop through
             if config == 0:
                 static_color_list.append(Color(rgb=(1,0,0)))
