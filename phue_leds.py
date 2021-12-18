@@ -60,8 +60,6 @@ def hue_send(index, inColor):
 def led_send(sobj,amplitude,colors):
     global some_modulus
     global sending
-    #if sending == True:
-    #    return
     raw_list = []
     for elem in colors:
         if elem[0] == '#':
