@@ -1,20 +1,24 @@
 #!/usr/bin/python
 from __future__ import print_function
-import serial, time, numpy
-from colour import Color
+
 import collections
-import subprocess
-from datetime import datetime
-from scipy import signal
-import ast
-import json
-from websocket import create_connection
-import phue
-import thread
 import configparser
+import json
+import logging
 import os
 import time
 import traceback
+from datetime import datetime
+
+import numpy
+import phue
+import serial
+import thread
+from PIL import Image
+from colour import Color
+from scipy import signal
+from websocket import create_connection
+
 
 global sending
 global decoded
