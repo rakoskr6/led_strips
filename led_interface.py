@@ -20,6 +20,9 @@ from scipy import signal
 from websocket import create_connection
 
 
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
 global sending
 global decoded
 global lastcallback
@@ -179,10 +182,12 @@ def led_send(sobj,amplitude,colors):
     runner_modulus = (runner_modulus+runner_speed%num_leds)
     gif_modulus = (gif_modulus+1)%1000000
     #send_data = bytearray([0]+raw_list)
-    #print(send_data)
-    #print(repr(send_data) + str(len(send_data)))
-    #print(len(send_data))
-    #print("attempting to send bits")
+
+    logger.debug(send_data)
+    logger.debug(repr(send_data) + str(len(send_data)))
+    logger.debug(len(send_data))
+    logger.debug("attempting to send bits")
+
     sending = True
     #print(sobj.read(sobj.in_waiting))
     # send_start = time.time()
@@ -411,6 +416,7 @@ if __name__ == '__main__':
         waiting = False
         lightConfig = {'mode': 'static', 'amplitude': 1}
         while stream.is_active():
+            logger.info("WHEEEEEEE")
             try:
                 # heartbeat every time we loop to keep the PHP dog happy
                 heartbeat()
