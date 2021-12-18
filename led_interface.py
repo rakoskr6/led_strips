@@ -24,12 +24,13 @@ global b,a
 
 AUDIO_CHANNELS = 2
 
+
+def pya_callback(in_data):
     global decoded
     global lastcallback, b, a
     lastcallback = float(datetime.now().strftime('%s.%f'))
     decoded = numpy.fromstring(in_data, 'Float32')
     #filtered = signal.filtfilt(b,a,decoded,padlen=200).astype(np.float32).tostring()
-    #print(in_data)
     return (in_data, pyaudio.paContinue)
 
 def bytebound(val):
@@ -39,15 +40,6 @@ def addnoise(inList):
     assert (len(inList)-1)%3 == 0
     noise = numpy.repeat(numpy.random.normal(0,5,(len(inList)-1)//3),3)
     outList = [inList[0]] + [max(0, min(255, int(elem))) for elem in list(inList[1:] + noise)]   
-    #print(outList[0])
-    return outList
-
-def whitecorrect(inList):
-    correctFactor = 0.80
-    if (len(inList) % 3 != 0):
-        print("UHHHH something is wrong with list {}".format(inList))
-    outList = [int(elem*correctFactor) if not (i)%3 else elem for i,elem in enumerate(inList)]
-    #print("{} -> {}".format(inList, outList))
     return outList
 
 def add_runner(inList, pos, val, width):
@@ -143,14 +135,6 @@ def led_send(sobj,amplitude,colors):
         raw_list.append(int(elem[4:6],16))
         #raw_list.append(int('00',16))   
     #print(len(raw_list))
-    ### # whitecorrect_list = whitecorrect(raw_list)
-    ### raw_list = (raw_list*(int(round((num_leds-12)/float(len(raw_list))))))[0:num_leds-12]
-    ### #print(len(raw_list))
-    ### #assert len(raw_list) == num_leds-12
-    ### raw_list += [0]*(12)
-    ### #print(repr(raw_list))
-    ### #raw_list = [0] + [255]*1359
-    ### #print(runner_modulus)
     raw_list = raw_list*(int(round((num_leds)/float(len(raw_list)))))
     raw_list = raw_list[0:num_leds]
     raw_list = [0] + raw_list
