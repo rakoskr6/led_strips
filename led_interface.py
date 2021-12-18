@@ -32,7 +32,7 @@ global b,a
 AUDIO_CHANNELS = 2
 
 
-def pya_callback(in_data):
+def pya_callback(in_data, frame_count, time_info, status):
     global decoded
     global lastcallback, b, a
     lastcallback = float(datetime.now().strftime('%s.%f'))
