@@ -77,23 +77,12 @@ def gen_image(image_path):
             for coord in coord_index_map.keys():
                 pixel_index = coord_index_map[coord]
                 remapped_coords = remap_pixels(coord, bbox_lights, bbox_image)
-                # print("Remapped {} to {}".format(coord, remapped_coords))
-                # print(image.getpixel(remapped_coords))
-                #print(subpixels)
-                #print(image.getpixel(remapped_coords))
                 subpixels[pixel_index*3:pixel_index*3+3] = rgb_image.getpixel(remapped_coords)
             out_list.append([0] + list(subpixels))
     else: 
         for coord in coord_index_map.keys():
             pixel_index = coord_index_map[coord]
             remapped_coords = remap_pixels(coord, bbox_lights, bbox_image)
-            # print("Remapped {} to {}".format(coord, remapped_coords))
-            # if pixel_index > 240:
-            #     pixel_index += 0
-            # if pixel_index > 270:
-            #     pixel_index += 5
-            # if pixel_index > 280:
-            #     pixel_index += 15
             subpixels[pixel_index*3:pixel_index*3+3] = image.getpixel(remapped_coords)
         out_list = [0] + subpixels
     # print(out_list)
@@ -329,7 +318,6 @@ if __name__ == '__main__':
     # Setup code for the serial interface to the Arduino running FastLED
     #ser = serial.Serial('/dev/ttyAMA0', 2000000, rtscts=1, writeTimeout=0)
     ser = serial.Serial('/dev/ttyACM0', 500000, writeTimeout=0)
-    #ser = serial.Serial('/dev/ttyAMA0', 500000, writeTimeout=0)
     # websocket connection for pixelblaze
     # Returned exception if pixel blaze not found, so added try - KR
     try:
@@ -445,8 +433,7 @@ if __name__ == '__main__':
             except Exception:
                 print("Falling back to old lightConfig")
                 print(traceback.format_exc())
-                # don't update the config
-            #print(lightConfig)
+
             # DSP dequeue for rolling amplitude calculation
             try:
                 if lightConfig['mode'] == 'music' and lightConfig['decay_len']:
