@@ -548,8 +548,8 @@ if __name__ == '__main__':
             elif config == 3:
                 static_color_list.append(Color(rgb=(1,0.9,0.9)))
                 static_color_list.append(Color(rgb=(0.6,0.5,0.5)))
-                ac_list.append( Color(rgb=(ampValue,ampValue,ampValue)))
-                ac_list.append( Color(rgb=(ampValue*0.6,ampValue*0.6,ampValue*0.6)))
+                ac_list.append(Color(rgb=(ampValue,ampValue,ampValue)))
+                ac_list.append(Color(rgb=(ampValue*0.6,ampValue*0.6,ampValue*0.6)))
             else:
                 # CUSTOM COLORS BASED OFF OF STUFF defined in the first 
                 # two lines of colorsettings.txt
