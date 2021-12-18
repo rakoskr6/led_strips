@@ -15,7 +15,6 @@ import numpy
 import phue
 import serial
 import thread
-from PIL import Image
 from colour import Color
 from scipy import signal
 from websocket import create_connection
