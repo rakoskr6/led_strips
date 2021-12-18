@@ -159,7 +159,7 @@ def led_send(sobj,amplitude,colors):
     if lightConfig['load_image']:
         # cast so we don't overwrite it
         if image_is_gif and type(image_pixel_list[0]) == list:
-            raw_list = list(image_pixel_list[(gif_modulus//5)%len(image_pixel_list)])
+            raw_list = list(image_pixel_list[(gif_modulus//lightConfig['gif_delay'])%len(image_pixel_list)])
         else:
             raw_list = list(image_pixel_list)
         # add amplitude for image mode
@@ -299,6 +299,10 @@ def heartbeat():
         with open('status.log', 'w') as fd:
             fd.write("{}\n{}\n".format(pid, currtime))
 
+######################################
+#      Main Loop                     #
+######################################
+
 if __name__ == '__main__':
     print("Starting LED strip interface")
     import pyaudio
@@ -318,20 +322,27 @@ if __name__ == '__main__':
     global image_pixel_list
     # globals hurt me
     global image_is_gif
+    # define pid and last_heartbeat_time to write to status.log
+    # this is read by the PHP scripts on the webserver
+    # to check if we're alive
     pid = os.getpid()
     last_heartbeat_time = int(time.time())
     print("Starting on pid {} at time {}".format(pid, last_heartbeat_time))
     heartbeat()
+    # read configuration options for the phillips hue and 
+    # pixelBlaze.
     network_config = configparser.ConfigParser()
     network_config.read('network.cfg')
     print(network_config.sections())
     bridgeEnabled = False
     # num_leds = 1350+12
     # num_leds = 150+12
+    # this is the number of subpixels; aka: the number of LEDs * 3
     num_leds = 900
     decoded = None
+    # default lightConfig, this gets reloaded every loop iteration
     lightConfig = {'mode': 'static', 'amplitude': 0.5}
-    # Setup code
+    # Setup code for the serial interface to the Arduino running FastLED
     #ser = serial.Serial('/dev/ttyAMA0', 2000000, rtscts=1, writeTimeout=0)
     ser = serial.Serial('/dev/ttyACM0', 500000, writeTimeout=0)
     #ser = serial.Serial('/dev/ttyAMA0', 500000, writeTimeout=0)
@@ -346,6 +357,7 @@ if __name__ == '__main__':
     if not use_pixelblaze:
         print("Pixelblaze is disabled via network.cfg")
         ws = None
+    # Check use_pixelblaze to startup the websocket for the pixelblaze
     if use_pixelblaze:
         try:
             ws = create_connection("ws://" + network_config['pixelblaze']['address'])
@@ -355,12 +367,14 @@ if __name__ == '__main__':
             websocket_connected = False
     #print(ser.read(ser.in_waiting))
     # Returned exception if Hue not found, so added try - KR
+    # Check  for phue
     try:
         use_hue = network_config['phue'].getboolean('enabled')
     except Exception as e:
         use_hue = False
     if not use_hue:
         print("Philips Hue is disabled via network.cfg")
+    # init all the philips hue bridge code
     if use_hue:
         huebridge = phue.Bridge(network_config['phue']['address'])
         try:
@@ -382,6 +396,7 @@ if __name__ == '__main__':
     
     print("Starting serial connection to Arduino...")
     print(ser.readline())
+    # initialize DSP state variables
     minVal = 1
     maxVal = 0
     n = 0
@@ -410,6 +425,7 @@ if __name__ == '__main__':
     image_is_gif = False
     image_pixel_list = gen_image("./images/rainbowvert.png")
     last_image = 'none'
+    # initialize processing loop for everything
     print("Starting processing loop")
     while (auto_restart):
         stream = paobj.open(format=FORMAT,
@@ -425,10 +441,12 @@ if __name__ == '__main__':
         lightConfig = {'mode': 'static', 'amplitude': 1}
         while stream.is_active():
             try:
+                # heartbeat every time we loop to keep the PHP dog happy
                 heartbeat()
             except Exception as e:
                 pass
             try:
+                # reload config on the fly, try catch with and use old value if we fail
                 new_lightConfig = reloadConfig()
                 lightConfig = new_lightConfig
                 if last_image != lightConfig['image_path']:
@@ -446,6 +464,7 @@ if __name__ == '__main__':
                 print(traceback.format_exc())
                 # don't update the config
             #print(lightConfig)
+            # DSP dequeue for rolling amplitude calculation
             try:
                 if lightConfig['mode'] == 'music' and lightConfig['decay_len']:
                     if len(rollingArray) != lightConfig['decay_len']:
@@ -481,6 +500,8 @@ if __name__ == '__main__':
                 lastconfigchange = now()
             #print("Currtime: {0}".format(currtime))
             #print("Callback: {0}".format(lastcallback))
+            # stream is flaky so sometimes it dies, print BAD! and restart automatically 
+            # if we die more than 3 times
             if (currtime - lastcallback) > 0.25:
                 print("BAD!")
                 badcount += 1
@@ -535,6 +556,17 @@ if __name__ == '__main__':
             # add global_brightness from config
             if 'global_brightness' in lightConfig.keys():
                 ampValue = ampValue * lightConfig['global_brightness']
+            #if lightConfig['load_image']:
+            #        if type(image_pixel_list[0]) == list: 
+            #            sample_pixel = image_pixel_list[gif_modulus%lightConfig['gif_delay']]
+            #        else:
+            #            sample_pixel = image_pixel_list
+            #        for i in range(20):
+            #            sindex = (runner_modulus + i)%num_leds
+            #            static_color_list.append(Color(rgb=[elem/256.0 if elem > 0 else 0 for elem in sample_pixel[sindex*3:sindex*3+3]]))
+            #            ac_list.append(Color(rgb=[elem/256.0 if elem > 0 else 0 for elem in sample_pixel[sindex*3:sindex*3+3]]))
+            #else:
+            # this config is just some predefined patterns we loop through
             if config == 0:
                 static_color_list.append(Color(rgb=(1,0,0)))
                 static_color_list.append(Color(rgb=(0,1,0)))
@@ -558,7 +590,8 @@ if __name__ == '__main__':
                 ac_list.append( Color(rgb=(ampValue,ampValue,ampValue)))
                 ac_list.append( Color(rgb=(ampValue*0.6,ampValue*0.6,ampValue*0.6)))
             else:
-                # CUSTOM COLORS BASED OFF OF STUFF aaa
+                # CUSTOM COLORS BASED OFF OF STUFF defined in the first 
+                # two lines of colorsettings.txt
                 static_color_list.append(Color(rgb=(c1_r,c1_g,c1_b)))
                 static_color_list.append(Color(rgb=(c2_r,c2_g,c2_b)))
                 ac_list.append(Color(rgb=(ampValue*c1_r,ampValue*c1_g,ampValue*c1_b)))
