@@ -1,6 +1,6 @@
 #include <FastLED.h>
 
-#define LED_PIN               5
+#define LED_PIN               8
 #define NUM_LEDS              300
 #define SERIAL_BUFF_SIZE      (NUM_LEDS*3 + 1) // +1 for the command  
 #define BRIGHTNESS            255 // currently not used

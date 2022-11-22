@@ -4,7 +4,8 @@ from led_interface import led_send
 import time, os, serial
 
 def ping_red():
-	ser = serial.Serial('/dev/ttyAMA0', 115200, rtscts=1)
+	ser = serial.Serial('/dev/ttyACM0', 500000, writeTimeout=0)
+	#ser = serial.Serial('/dev/ttyAMA0', 115200, rtscts=1) # original
 
 	color_red = 'FF0000'
 	color_green = '00FF00'

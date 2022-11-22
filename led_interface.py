@@ -1,20 +1,28 @@
 #!/usr/bin/python
 from __future__ import print_function
-import serial, time, numpy
-from colour import Color
+
 import collections
-import subprocess
-from datetime import datetime
-from scipy import signal
-import ast
-import json
-from websocket import create_connection
-import phue
-import thread
 import configparser
+import json
+import logging
 import os
+import sys
 import time
 import traceback
+from datetime import datetime
+
+import numpy
+import phue
+import serial
+import thread
+from PIL import Image
+from colour import Color
+from scipy import signal
+from websocket import create_connection
+
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+logger = logging.getLogger()
+
 
 global sending
 global decoded
@@ -22,14 +30,15 @@ global lastcallback
 global runner_modulus
 global b,a
 
+AUDIO_CHANNELS = 2
+
+
 def pya_callback(in_data, frame_count, time_info, status):
-    config = 0
     global decoded
     global lastcallback, b, a
     lastcallback = float(datetime.now().strftime('%s.%f'))
     decoded = numpy.fromstring(in_data, 'Float32')
     #filtered = signal.filtfilt(b,a,decoded,padlen=200).astype(np.float32).tostring()
-    #print(in_data)
     return (in_data, pyaudio.paContinue)
 
 def bytebound(val):
@@ -39,15 +48,6 @@ def addnoise(inList):
     assert (len(inList)-1)%3 == 0
     noise = numpy.repeat(numpy.random.normal(0,5,(len(inList)-1)//3),3)
     outList = [inList[0]] + [max(0, min(255, int(elem))) for elem in list(inList[1:] + noise)]   
-    #print(outList[0])
-    return outList
-
-def whitecorrect(inList):
-    correctFactor = 0.80
-    if (len(inList) % 3 != 0):
-        print("UHHHH something is wrong with list {}".format(inList))
-    outList = [int(elem*correctFactor) if not (i)%3 else elem for i,elem in enumerate(inList)]
-    #print("{} -> {}".format(inList, outList))
     return outList
 
 def add_runner(inList, pos, val, width):
@@ -60,51 +60,46 @@ def add_runner(inList, pos, val, width):
 def now():
     return float(datetime.now().strftime('%s.%f'))
 
-def gen_image(image_path):
-    global image_is_gif
+def get_led_boundary_box():
+    """Returns a tuple of size 4 with the x/y coordinates of the LED boundaries"""
     from map import coord_index_map
-    from map import index_coord_map
-    from PIL import Image
     min_x = min([coord[0] for coord in coord_index_map.keys()])
     max_x = max([coord[0] for coord in coord_index_map.keys()])
     min_y = min([coord[1] for coord in coord_index_map.keys()])
     max_y = max([coord[1] for coord in coord_index_map.keys()])
-    bbox_lights = (min_x, min_y, max_x, max_y)
+    return min_x, min_y, max_x, max_y
+
+def get_image_boundary_box(image_path):
     image = Image.open(image_path)
     img_max_x, img_max_y = image.size
     bbox_image = (0, 0, img_max_x-1, img_max_y-1)
-    subpixels = [0]*900
+    return image, bbox_image
+
+def generate_frame(image, bbox_lights, bbox_image):
+    from map import coord_index_map
+    subpixels = [0] * 900
+    for coord in coord_index_map.keys():
+        pixel_index = coord_index_map[coord]
+        remapped_coords = remap_pixels(coord, bbox_lights, bbox_image)
+        subpixels[pixel_index * 3:pixel_index * 3 + 3] = image.getpixel(remapped_coords)
+    return subpixels
+
+def gen_image(image_path):
+    global image_is_gif
+    bbox_lights = get_led_boundary_box()
+    image, bbox_image = get_image_boundary_box(image_path)
     if image_is_gif and image.is_animated:
         # out_list is going to be a list of lists
         num_frames = image.n_frames
         out_list = []
         for i in range(num_frames):
-            subpixels = [0]*900
             image.seek(i)
             rgb_image = image.convert('RGB')
-            for coord in coord_index_map.keys():
-                pixel_index = coord_index_map[coord]
-                remapped_coords = remap_pixels(coord, bbox_lights, bbox_image)
-                # print("Remapped {} to {}".format(coord, remapped_coords))
-                # print(image.getpixel(remapped_coords))
-                #print(subpixels)
-                #print(image.getpixel(remapped_coords))
-                subpixels[pixel_index*3:pixel_index*3+3] = rgb_image.getpixel(remapped_coords)
+            subpixels = generate_frame(rgb_image, bbox_lights, bbox_image)
             out_list.append([0] + list(subpixels))
-    else: 
-        for coord in coord_index_map.keys():
-            pixel_index = coord_index_map[coord]
-            remapped_coords = remap_pixels(coord, bbox_lights, bbox_image)
-            # print("Remapped {} to {}".format(coord, remapped_coords))
-            # if pixel_index > 240:
-            #     pixel_index += 0
-            # if pixel_index > 270:
-            #     pixel_index += 5
-            # if pixel_index > 280:
-            #     pixel_index += 15
-            subpixels[pixel_index*3:pixel_index*3+3] = image.getpixel(remapped_coords)
-        out_list = [0] + subpixels
-    # print(out_list)
+    else:
+        subpixels = generate_frame(image, bbox_lights, bbox_image)
+        out_list = [0] + list(subpixels)
     return out_list
 
 # remap from coordinate plane 1 to plane 2
@@ -117,7 +112,13 @@ def remap_pixels(coord, bbox_1, bbox_2):
     y_out = int(((float(y_in-min_y1)/float(max_y1-min_y1))*float(max_y2-min_y2))+min_y2)
     return (x_out, y_out)
     
-    
+
+def debug_indexing(gif_modulus):
+    input("Press enter for next")
+    raw_list = 900*[0]
+    print("index is {}".format(gif_modulus))
+    raw_list[(3*gif_modulus)%900:(3*gif_modulus+3)%900] = (255, 255, 255)
+    return [0] + raw_list
 
 def led_send(sobj,amplitude,colors):
     global runner_modulus
@@ -141,24 +142,13 @@ def led_send(sobj,amplitude,colors):
         raw_list.append(int(elem[0:2],16))
         raw_list.append(int(elem[2:4],16))
         raw_list.append(int(elem[4:6],16))
-        #raw_list.append(int('00',16))   
-    #print(len(raw_list))
-    ### # whitecorrect_list = whitecorrect(raw_list)
-    ### raw_list = (raw_list*(int(round((num_leds-12)/float(len(raw_list))))))[0:num_leds-12]
-    ### #print(len(raw_list))
-    ### #assert len(raw_list) == num_leds-12
-    ### raw_list += [0]*(12)
-    ### #print(repr(raw_list))
-    ### #raw_list = [0] + [255]*1359
-    ### #print(runner_modulus)
     raw_list = raw_list*(int(round((num_leds)/float(len(raw_list)))))
     raw_list = raw_list[0:num_leds]
     raw_list = [0] + raw_list
-    # print(raw_list[-10::])
 
     if lightConfig['load_image']:
         # cast so we don't overwrite it
-        if image_is_gif and type(image_pixel_list[0]) == list:
+        if image_is_gif and isinstance(image_pixel_list[0], list):
             raw_list = list(image_pixel_list[(gif_modulus//lightConfig['gif_delay'])%len(image_pixel_list)])
         else:
             raw_list = list(image_pixel_list)
@@ -183,18 +173,13 @@ def led_send(sobj,amplitude,colors):
     #send_data = bytearray([0]+rotated_list)
     
     debug_indexing = False
-    # input("Press enter for next")
-    # if debug_indexing:
-    #     raw_list = 900*[0]
-    #     print("index is {}".format(gif_modulus))
-    #     raw_list[(3*gif_modulus)%900:(3*gif_modulus+3)%900] = (255, 255, 255)
-    #     raw_list = [0] + raw_list
+    if debug_indexing:
+        raw_list = debug_indexing(gif_modulus)
 
     global lightConfig
     if lightConfig['shimmer'] == True:
         raw_list = addnoise(raw_list)
     raw_list[len(raw_list)-to_kill:len(raw_list)] = to_kill*[0] 
-    #a[len(a)-4:len(a)] = 4*[0]
 
     # print("Sending length {} list".format(len(raw_list)))
     send_data = bytearray(raw_list)
@@ -204,10 +189,12 @@ def led_send(sobj,amplitude,colors):
     runner_modulus = (runner_modulus+runner_speed%num_leds)
     gif_modulus = (gif_modulus+1)%1000000
     #send_data = bytearray([0]+raw_list)
-    #print(send_data)
-    #print(repr(send_data) + str(len(send_data)))
-    #print(len(send_data))
-    #print("attempting to send bits")
+
+    logger.debug(send_data)
+    logger.debug(repr(send_data) + str(len(send_data)))
+    logger.debug(len(send_data))
+    logger.debug("attempting to send bits")
+
     sending = True
     #print(sobj.read(sobj.in_waiting))
     # send_start = time.time()
@@ -345,7 +332,6 @@ if __name__ == '__main__':
     # Setup code for the serial interface to the Arduino running FastLED
     #ser = serial.Serial('/dev/ttyAMA0', 2000000, rtscts=1, writeTimeout=0)
     ser = serial.Serial('/dev/ttyACM0', 500000, writeTimeout=0)
-    #ser = serial.Serial('/dev/ttyAMA0', 500000, writeTimeout=0)
     # websocket connection for pixelblaze
     # Returned exception if pixel blaze not found, so added try - KR
     try:
@@ -382,7 +368,7 @@ if __name__ == '__main__':
             huebridge.connect()
             bridgeEnabled = True
             print("Connected!")
-        except Exeption as e:
+        except Exception as e:
             print("{}".format(e))
             bridgeEnabled = False
         huebridge.set_light([1,3,4], 'on', True, transitiontime=0)
@@ -396,6 +382,7 @@ if __name__ == '__main__':
     
     print("Starting serial connection to Arduino...")
     print(ser.readline())
+    print("read!")
     # initialize DSP state variables
     minVal = 1
     maxVal = 0
@@ -403,14 +390,12 @@ if __name__ == '__main__':
     k = 0
     runner_modulus = 0
     gif_modulus = 0
-    b, a = signal.butter(5, 250.0/(0.5*48000), btype='lowpass')
     rollingArray = collections.deque(maxlen=8)
     rollingArraySmall = collections.deque(maxlen=3)
     rollingArray.append(0.0)
     rollingArraySmall.append(0.0)
     badcount = 0
     WIDTH = 2
-    CHANNELS = 2
     RATE = 32000
     FORMAT = pyaudio.paFloat32
     c1_r, c1_g, c1_b, c2_r, c2_g, c2_b = reloadColors()
@@ -426,15 +411,15 @@ if __name__ == '__main__':
     image_pixel_list = gen_image("./images/rainbowvert.png")
     last_image = 'none'
     # initialize processing loop for everything
-    print("Starting processing loop")
+    logger.info("Starting processing loop")
+    print("starting loop")
     while (auto_restart):
         stream = paobj.open(format=FORMAT,
-                        channels=CHANNELS,
+                        channels=AUDIO_CHANNELS,
                         rate=RATE,
                         input=True,
                         output=True,
                         stream_callback=pya_callback)
-        #                stream_callback=pya_nightlight_callback)
         stream.start_stream()
         config = 1 
         waiting = False
@@ -450,8 +435,8 @@ if __name__ == '__main__':
                 new_lightConfig = reloadConfig()
                 lightConfig = new_lightConfig
                 if last_image != lightConfig['image_path']:
-                    print("Loading new image file: {}".format(lightConfig['image_path']))
-                    if '.gif' in lightConfig['image_path']: 
+                    logger.info("Loading new image file: {}".format(lightConfig['image_path']))
+                    if lightConfig['image_path'].endswith('.gif'):
                         image_is_gif = True
                     else:
                         image_is_gif = False
@@ -460,10 +445,9 @@ if __name__ == '__main__':
                     image_pixel_list = image_pixel_list_temp
                 last_image = lightConfig['image_path']
             except Exception:
-                print("Falling back to old lightConfig")
-                print(traceback.format_exc())
-                # don't update the config
-            #print(lightConfig)
+                logger.error("Falling back to old lightConfig")
+                logger.error(traceback.format_exc())
+
             # DSP dequeue for rolling amplitude calculation
             try:
                 if lightConfig['mode'] == 'music' and lightConfig['decay_len']:
@@ -477,8 +461,8 @@ if __name__ == '__main__':
                         newRollingArraySmall += rollingArraySmall
                         rollingArraySmall = newRollingArraySmall
             except Exception as e:
-                print("Failed to set decay length")
-                print(e)
+                logger.error("Failed to set decay length")
+                logger.error(e)
             if type(decoded) == type(None):
                 if waiting == False:
                     print("Waiting for stream", end ="")
@@ -496,7 +480,7 @@ if __name__ == '__main__':
                 p_time = 10
             if (currtime - lastconfigchange) > p_time:
                 config = (config+1)%5
-                print("Config is now {}".format(config))
+                logger.info("Config is now {}".format(config))
                 lastconfigchange = now()
             #print("Currtime: {0}".format(currtime))
             #print("Callback: {0}".format(lastcallback))
@@ -556,16 +540,7 @@ if __name__ == '__main__':
             # add global_brightness from config
             if 'global_brightness' in lightConfig.keys():
                 ampValue = ampValue * lightConfig['global_brightness']
-            #if lightConfig['load_image']:
-            #        if type(image_pixel_list[0]) == list: 
-            #            sample_pixel = image_pixel_list[gif_modulus%lightConfig['gif_delay']]
-            #        else:
-            #            sample_pixel = image_pixel_list
-            #        for i in range(20):
-            #            sindex = (runner_modulus + i)%num_leds
-            #            static_color_list.append(Color(rgb=[elem/256.0 if elem > 0 else 0 for elem in sample_pixel[sindex*3:sindex*3+3]]))
-            #            ac_list.append(Color(rgb=[elem/256.0 if elem > 0 else 0 for elem in sample_pixel[sindex*3:sindex*3+3]]))
-            #else:
+
             # this config is just some predefined patterns we loop through
             if config == 0:
                 static_color_list.append(Color(rgb=(1,0,0)))
@@ -587,8 +562,8 @@ if __name__ == '__main__':
             elif config == 3:
                 static_color_list.append(Color(rgb=(1,0.9,0.9)))
                 static_color_list.append(Color(rgb=(0.6,0.5,0.5)))
-                ac_list.append( Color(rgb=(ampValue,ampValue,ampValue)))
-                ac_list.append( Color(rgb=(ampValue*0.6,ampValue*0.6,ampValue*0.6)))
+                ac_list.append(Color(rgb=(ampValue,ampValue,ampValue)))
+                ac_list.append(Color(rgb=(ampValue*0.6,ampValue*0.6,ampValue*0.6)))
             else:
                 # CUSTOM COLORS BASED OFF OF STUFF defined in the first 
                 # two lines of colorsettings.txt
