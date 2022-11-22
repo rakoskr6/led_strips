@@ -412,7 +412,10 @@ if __name__ == '__main__':
     last_image = 'none'
     # initialize processing loop for everything
     logger.info("Starting processing loop")
+<<<<<<< HEAD
     print("starting loop")
+=======
+>>>>>>> fff97cc2b295bad04a935a188e4a37d630a00d79
     while (auto_restart):
         stream = paobj.open(format=FORMAT,
                         channels=AUDIO_CHANNELS,
