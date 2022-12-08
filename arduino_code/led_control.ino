@@ -1,7 +1,7 @@
 #include <FastLED.h>
 
 #define LED_PIN               8
-#define NUM_LEDS              450
+#define NUM_LEDS              500
 #define SERIAL_BUFF_SIZE      (NUM_LEDS*3 + 1) // +1 for the command  
 #define BRIGHTNESS            255 // currently not used
 #define LED_TYPE              WS2812B
