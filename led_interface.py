@@ -325,7 +325,7 @@ if __name__ == '__main__':
     # num_leds = 1350+12
     # num_leds = 150+12
     # this is the number of subpixels; aka: the number of LEDs * 3
-    num_leds = 900
+    num_leds = 500*3
     decoded = None
     # default lightConfig, this gets reloaded every loop iteration
     lightConfig = {'mode': 'static', 'amplitude': 0.5}
