@@ -263,25 +263,18 @@ class PixelBlaze():
     def connected(self):
         return self.ws.connected
 
-
-def send_to_network(pixelblaze, colorList):
-    colorsToSend = {
-        "setVars" : {
-        'adjust': lightConfig['adjust'],
-        'numColors' : len(colorList),
-        'colorList' : [elem for sublist in [list(elem.rgb) for elem in colorList] for elem in sublist]
+    def send_to_network(self, colorList):
+        colorsToSend = {
+            "setVars": {
+            'adjust': lightConfig['adjust'],
+            'numColors': len(colorList),
+            'colorList': [elem for sublist in [list(elem.rgb) for elem in colorList] for elem in sublist]
+            }
         }
-    }
-    try:
-        pixelblaze.ws.send(json.dumps(colorsToSend))
-    except:
-        #FIXME: This needs to be removed
-        print("Lost connection to websocket server, is it on?")
-        # something went wrong here hahaha
-        ws = None
-        # print("attempting to reconnect")
-        # ws = create_connection("ws://192.168.1.161:81")
-        # ws.send(json.dumps(colorsToSend))
+        try:
+            self.ws.send(json.dumps(colorsToSend))
+        except Exception as e:
+            print("Lost connection to websocket server, is it on? " + str(e))
 
 def hue_send(index, inColor):
     global lights
@@ -313,7 +306,6 @@ if __name__ == '__main__':
     global runner_modulus
     global lastconfigchange
     global b, a
-    global ws
     global num_leds
     global lightConfig
     global lights
@@ -347,21 +339,15 @@ if __name__ == '__main__':
     # Setup code for the serial interface to the Arduino running FastLED
     #ser = serial.Serial('/dev/ttyAMA0', 2000000, rtscts=1, writeTimeout=0)
     ser = serial.Serial('/dev/ttyACM0', 500000, writeTimeout=0)
-    # websocket connection for pixelblaze
-    # Returned exception if pixel blaze not found, so added try - KR
     try:
-        use_pixelblaze = network_config['pixelblaze'].getboolean('enabled')
-    except Exception as e:
-        use_pixelblaze = False
+        pixelblaze_addr = network_config['pixelblaze'].getboolean('enabled')
+        pixelblaze_cabinets_addr = network_config['pixelblaze_cabinets'].getboolean('enabled')
+    except KeyError as e:
+        print("Pixelblaze is disabled via network.cfg or config is invalid")
+    else:
+        pixel_blazes.append(PixelBlaze(ipaddress=pixelblaze_addr))
+        pixel_blazes.append(PixelBlaze(ipaddress=pixelblaze_cabinets_addr))
 
-    ws = None
-    if not use_pixelblaze:
-        print("Pixelblaze is disabled via network.cfg")
-        ws = None
-    # Check use_pixelblaze to startup the websocket for the pixelblaze
-    if use_pixelblaze:
-        address = network_config['pixelblaze']['address']
-        pixel_blazes.append(PixelBlaze(ipaddress=address))
     #print(ser.read(ser.in_waiting))
     # Returned exception if Hue not found, so added try - KR
     # Check  for phue
@@ -612,9 +598,9 @@ if __name__ == '__main__':
                 if pb.connected:
                     # this is WAY TOO STROBEY
                     if lightConfig['wireless_music']:
-                        send_to_network(pb, ac_list)
+                        pb.send_to_network(ac_list)
                     else:
-                        send_to_network(pb, static_color_list)
+                        pb.send_to_network(static_color_list)
             #print(colorList)
             #led_send(ser, 6, colorList)
             #time.sleep(0.005)
