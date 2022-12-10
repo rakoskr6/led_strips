@@ -179,7 +179,9 @@ def led_send(sobj,amplitude,colors):
     global lightConfig
     if lightConfig['shimmer'] == True:
         raw_list = addnoise(raw_list)
-    raw_list[len(raw_list)-to_kill:len(raw_list)] = to_kill*[0] 
+    else:
+        # FIXME: For some reason if shimmer is off, the first 10 or 20 LEDs have the wrong color @fenixfurion
+    raw_list[len(raw_list)-to_kill:len(raw_list)] = to_kill*[0]
 
     # print("Sending length {} list".format(len(raw_list)))
     send_data = bytearray(raw_list)
