@@ -261,6 +261,8 @@ class PixelBlaze():
 
     @property
     def connected(self):
+        if not self.ws:
+            return False
         return self.ws.connected
 
     def send_to_network(self, colorList):
