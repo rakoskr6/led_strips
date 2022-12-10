@@ -250,8 +250,20 @@ def reloadConfig():
         raise
     return config
 
-def send_to_network(colorList):
-    global ws
+class PixelBlaze():
+    def __init__(self, ipaddress):
+        self.ws = None
+        try:
+            self.ws = create_connection(f"ws://{ipaddress}")
+        except Exception as e:
+            print(e)
+
+    @property
+    def connected(self):
+        return self.ws.open
+
+
+def send_to_network(pixelblaze, colorList):
     colorsToSend = {
         "setVars" : {
         'adjust': lightConfig['adjust'],
@@ -260,16 +272,15 @@ def send_to_network(colorList):
         }
     }
     try:
-        ws.send(json.dumps(colorsToSend))
+        pixelblaze.ws.send(json.dumps(colorsToSend))
     except:
+        #FIXME: This needs to be removed
         print("Lost connection to websocket server, is it on?")
         # something went wrong here hahaha
         ws = None
-        websocket_connected = False
         # print("attempting to reconnect")
         # ws = create_connection("ws://192.168.1.161:81")
         # ws.send(json.dumps(colorsToSend))
-    return
 
 def hue_send(index, inColor):
     global lights
@@ -293,6 +304,7 @@ def heartbeat():
 ######################################
 
 if __name__ == '__main__':
+
     print("Starting LED strip interface")
     import pyaudio
     global decoded
@@ -300,7 +312,6 @@ if __name__ == '__main__':
     global runner_modulus
     global lastconfigchange
     global b, a
-    global websocket_connected
     global ws
     global num_leds
     global lightConfig
@@ -311,6 +322,7 @@ if __name__ == '__main__':
     global image_pixel_list
     # globals hurt me
     global image_is_gif
+    pixel_blazes = []
     # define pid and last_heartbeat_time to write to status.log
     # this is read by the PHP scripts on the webserver
     # to check if we're alive
@@ -347,12 +359,8 @@ if __name__ == '__main__':
         ws = None
     # Check use_pixelblaze to startup the websocket for the pixelblaze
     if use_pixelblaze:
-        try:
-            ws = create_connection("ws://" + network_config['pixelblaze']['address'])
-            websocket_connected = True
-        except Exception as e:
-            print(e)
-            websocket_connected = False
+        address = network_config['pixelblaze']['address']
+        pixel_blazes.append(PixelBlaze(ipaddress=address))
     #print(ser.read(ser.in_waiting))
     # Returned exception if Hue not found, so added try - KR
     # Check  for phue
@@ -575,7 +583,6 @@ if __name__ == '__main__':
                 ac_list.append(Color(rgb=(ampValue*c2_r,ampValue*c2_g,ampValue*c2_b)))
                 
             # Hue bulb integration
-              
             if(bridgeEnabled):
                 if last_hue_c != static_color_list[0]:
                     # send new colors to hue
@@ -598,13 +605,15 @@ if __name__ == '__main__':
                     ac_list.reverse()
                 pattern = ([ac_list[0].hex_l] + [ac_list[1].hex_l])
             colorList = pattern
-            # send pattern to wireless strips
-            if ws and websocket_connected:
-                # this is WAY TOO STROBEY
-                if lightConfig['wireless_music']:
-                    send_to_network(ac_list)
-                else:
-                    send_to_network(static_color_list)
+
+            # Send pattern to PixelBlaze wireless strips
+            for pb in pixel_blazes:
+                if pb.connected:
+                    # this is WAY TOO STROBEY
+                    if lightConfig['wireless_music']:
+                        send_to_network(pb, ac_list)
+                    else:
+                        send_to_network(pb, static_color_list)
             #print(colorList)
             #led_send(ser, 6, colorList)
             #time.sleep(0.005)
