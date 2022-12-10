@@ -261,7 +261,7 @@ class PixelBlaze():
 
     @property
     def connected(self):
-        return self.ws.open
+        return self.ws.connected
 
 
 def send_to_network(pixelblaze, colorList):
