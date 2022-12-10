@@ -255,7 +255,7 @@ class PixelBlaze():
     def __init__(self, ipaddress):
         self.ws = None
         try:
-            self.ws = create_connection(f"ws://{ipaddress}")
+            self.ws = create_connection("ws://" + ipaddress)
         except Exception as e:
             print(e)
 
