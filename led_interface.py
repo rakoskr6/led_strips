@@ -341,20 +341,24 @@ if __name__ == '__main__':
     # Setup code for the serial interface to the Arduino running FastLED
     #ser = serial.Serial('/dev/ttyAMA0', 2000000, rtscts=1, writeTimeout=0)
     ser = serial.Serial('/dev/ttyACM0', 500000, writeTimeout=0)
-    try:
-        addresses = [
-            network_config['pixelblaze'].getboolean('enabled'),
-            network_config['pixelblaze_cabinets'].getboolean('enabled')
-        ]
-    except KeyError as e:
-        print("Pixelblaze is disabled via network.cfg or config is invalid")
-    else:
-        for addr in addresses:
-            pb = PixelBlaze(ipaddress=addr)
-            if pb.connected:
-                pixel_blazes.append(pb)
-            else:
-                print("Failed to connect to PixelBlaze at " + addr)
+
+    names = ['pixelblaze', 'pixelblaze_cabinets']
+    addresses = []
+    for name in names:
+        try:
+            if network_config[name].getboolean('enabled'):
+                addresses.append(
+                    network_config[name]['address']
+                )
+        except KeyError as e:
+            print(name + " - Pixelblaze is disabled via network.cfg or config is invalid")
+
+    for addr in addresses:
+        pb = PixelBlaze(ipaddress=addr)
+        if pb.connected:
+            pixel_blazes.append(pb)
+        else:
+            print("Failed to connect to PixelBlaze at " + addr)
 
     #print(ser.read(ser.in_waiting))
     # Returned exception if Hue not found, so added try - KR
