@@ -340,13 +340,19 @@ if __name__ == '__main__':
     #ser = serial.Serial('/dev/ttyAMA0', 2000000, rtscts=1, writeTimeout=0)
     ser = serial.Serial('/dev/ttyACM0', 500000, writeTimeout=0)
     try:
-        pixelblaze_addr = network_config['pixelblaze'].getboolean('enabled')
-        pixelblaze_cabinets_addr = network_config['pixelblaze_cabinets'].getboolean('enabled')
+        addresses = [
+            network_config['pixelblaze'].getboolean('enabled'),
+            network_config['pixelblaze_cabinets'].getboolean('enabled')
+        ]
     except KeyError as e:
         print("Pixelblaze is disabled via network.cfg or config is invalid")
     else:
-        pixel_blazes.append(PixelBlaze(ipaddress=pixelblaze_addr))
-        pixel_blazes.append(PixelBlaze(ipaddress=pixelblaze_cabinets_addr))
+        for addr in addresses:
+            pb = PixelBlaze(ipaddress=addr)
+            if pb.connected:
+                pixel_blazes.append(pb)
+            else:
+                print("Failed to connect to PixelBlaze at " + addr)
 
     #print(ser.read(ser.in_waiting))
     # Returned exception if Hue not found, so added try - KR
