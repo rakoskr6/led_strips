@@ -10,9 +10,14 @@ def set_config(key, value):
     with open(CONFIG_FILE, 'r') as fp:
         data = json.load(fp)
         if key in data:
-            if typ == bool
-            typ = type(key)
-            data[key] = typ(value)
+            value = data.get(key)
+            if type(value) == bool:
+                casted = bool(value)
+            elif type(value) == float:
+                casted = float(value)
+            else
+                casted = str(value)
+            data[key] = casted
 
     with open(CONFIG_FILE, 'w') as fp:
         fp.truncate()
