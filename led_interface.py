@@ -340,7 +340,7 @@ if __name__ == '__main__':
     lightConfig = {'mode': 'static', 'amplitude': 0.5}
     # Setup code for the serial interface to the Arduino running FastLED
     #ser = serial.Serial('/dev/ttyAMA0', 2000000, rtscts=1, writeTimeout=0)
-    ser = serial.Serial('/dev/ttyACM0', 500000, writeTimeout=0)
+    ser = serial.Serial('/dev/ttyACM0', 500000, writeTimeout=0, timeout=5)
 
     names = ['pixelblaze', 'pixelblaze_cabinets']
     addresses = []
