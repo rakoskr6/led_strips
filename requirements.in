@@ -1,0 +1,11 @@
+# This is my best guess based on what krakos had on the RPI
+bs4
+colour
+numpy
+phue
+pillow
+pyjwt
+pyserial
+requests
+scipy
+thread
