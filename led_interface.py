@@ -14,7 +14,7 @@ from datetime import datetime
 import numpy
 import phue
 import serial
-import thread
+# import thread
 from PIL import Image
 from colour import Color
 from scipy import signal
@@ -37,6 +37,7 @@ def pya_callback(in_data, frame_count, time_info, status):
     global decoded
     global lastcallback, b, a
     lastcallback = float(datetime.now().strftime('%s.%f'))
+    # print("Callback at " + str(lastcallback))
     decoded = numpy.fromstring(in_data, 'Float32')
     #filtered = signal.filtfilt(b,a,decoded,padlen=200).astype(np.float32).tostring()
     return (in_data, pyaudio.paContinue)
@@ -53,9 +54,9 @@ def addnoise(inList):
 def add_runner(inList, pos, val, width):
     global num_leds
     for i in range(width):
-        inList[1+((pos+i)%(num_leds/3))*3] = min(255,2*val)
-        inList[2+((pos+i)%(num_leds/3))*3] = min(255,2*val)
-        inList[3+((pos+i)%(num_leds/3))*3] = min(255,2*val)
+        inList[1+((pos+i)%(num_leds//3))*3] = min(255,2*val)
+        inList[2+((pos+i)%(num_leds//3))*3] = min(255,2*val)
+        inList[3+((pos+i)%(num_leds//3))*3] = min(255,2*val)
 
 def now():
     return float(datetime.now().strftime('%s.%f'))
@@ -205,7 +206,7 @@ def led_send(sobj,amplitude,colors):
     # send_data = bytearray([0] + [10,10,10]*300)
     bitssent = sobj.write(send_data)
     # send_end = time.time()
-    time.sleep(0.04)
+    time.sleep(0.05)
     # time.sleep(1.00)
     sending = False
     # print("Successfully sent {} bytes".format(bitssent))
@@ -254,14 +255,16 @@ def reloadConfig():
 class PixelBlaze():
     def __init__(self, ipaddress):
         self.ws = None
+        self.ipaddress = ipaddress
+        self.failed = False
         try:
-            self.ws = create_connection("ws://" + ipaddress)
+            self.ws = create_connection("ws://" + self.ipaddress, timeout=5)
         except Exception as e:
             print(e)
 
     @property
     def connected(self):
-        if not self.ws:
+        if not self.ws or self.failed:
             return False
         return self.ws.connected
 
@@ -277,6 +280,12 @@ class PixelBlaze():
             self.ws.send(json.dumps(colorsToSend))
         except Exception as e:
             print("Lost connection to websocket server, is it on? " + str(e))
+            print("Attempting to reconnect...")
+            try:
+                self.ws = create_connection("ws://" + self.ipaddress, timeout=10)
+            except Exception as e:
+                print("Failed to reconnect after 10 seconds... skipping")
+                self.failed = True
 
 def hue_send(index, inColor):
     global lights
@@ -325,19 +334,18 @@ if __name__ == '__main__':
     last_heartbeat_time = int(time.time())
     print("Starting on pid {} at time {}".format(pid, last_heartbeat_time))
     heartbeat()
-    # read configuration options for the phillips hue and 
-    # pixelBlaze.
+    
+    # read configuration options for the phillips hue and pixelBlaze.
     network_config = configparser.ConfigParser()
     network_config.read('network.cfg')
     print(network_config.sections())
     bridgeEnabled = False
-    # num_leds = 1350+12
-    # num_leds = 150+12
     # this is the number of subpixels; aka: the number of LEDs * 3
-    num_leds = 500*3
+    num_leds = 500*3 # originally 500
     decoded = None
     # default lightConfig, this gets reloaded every loop iteration
     lightConfig = {'mode': 'static', 'amplitude': 0.5}
+    
     # Setup code for the serial interface to the Arduino running FastLED
     #ser = serial.Serial('/dev/ttyAMA0', 2000000, rtscts=1, writeTimeout=0)
     ser = serial.Serial('/dev/ttyACM0', 500000, writeTimeout=0, timeout=5)
@@ -361,8 +369,7 @@ if __name__ == '__main__':
             print("Failed to connect to PixelBlaze at " + addr)
 
     #print(ser.read(ser.in_waiting))
-    # Returned exception if Hue not found, so added try - KR
-    # Check  for phue
+    # Returned exception if Hue not found, so added try
     try:
         use_hue = network_config['phue'].getboolean('enabled')
     except Exception as e:
@@ -419,6 +426,8 @@ if __name__ == '__main__':
     image_is_gif = False
     image_pixel_list = gen_image("./images/rainbowvert.png")
     last_image = 'none'
+    
+
     # initialize processing loop for everything
     logger.info("Starting processing loop")
     print("starting loop")
@@ -430,6 +439,7 @@ if __name__ == '__main__':
                         output=True,
                         stream_callback=pya_callback)
         stream.start_stream()
+        print(repr(stream))
         config = 1 
         waiting = False
         lightConfig = {'mode': 'static', 'amplitude': 1}
@@ -440,6 +450,13 @@ if __name__ == '__main__':
             except Exception as e:
                 pass
             try:
+                for index, pb in enumerate(pixel_blazes):
+                    if not pb.connected:
+                        addr = pb.ipaddress
+                        pb = PixelBlaze(ipaddress=addr)
+                        if pb.connected:
+                            logger.info("Re-creating pixelblaze at ip " + str(addr))
+                            pixel_blazes[index] = pb
                 # reload config on the fly, try catch with and use old value if we fail
                 new_lightConfig = reloadConfig()
                 lightConfig = new_lightConfig
@@ -488,7 +505,7 @@ if __name__ == '__main__':
             except:
                 p_time = 10
             if (currtime - lastconfigchange) > p_time:
-                config = (config+1)%5
+                config = (config+1)%7  # previously 5
                 logger.info("Config is now {}".format(config))
                 lastconfigchange = now()
             #print("Currtime: {0}".format(currtime))
@@ -551,29 +568,60 @@ if __name__ == '__main__':
                 ampValue = ampValue * lightConfig['global_brightness']
 
             # this config is just some predefined patterns we loop through
-            if config == 0:
+            if config == 0: #RRGG
+                static_color_list.append(Color(rgb=(1,0,0)))
                 static_color_list.append(Color(rgb=(1,0,0)))
                 static_color_list.append(Color(rgb=(0,1,0)))
+                static_color_list.append(Color(rgb=(0,1,0)))
+                ac_list.append(Color(rgb=(ampValue,0,0)))
                 ac_list.append(Color(rgb=(ampValue,0,0)))
                 ac_list.append(Color(rgb=(0,ampValue,0)))
-            elif config == 2:
+                ac_list.append(Color(rgb=(0,ampValue,0)))
+            
+            elif config == 1: #RGB
+                static_color_list.append(Color(rgb=(1,0,0)))
+                static_color_list.append(Color(rgb=(0,1,0)))
+                static_color_list.append(Color(rgb=(0,0,1)))
+                ac_list.append(Color(rgb=(ampValue,0,0)))
+                ac_list.append(Color(rgb=(0,ampValue,0)))
+                ac_list.append(Color(rgb=(0,0,ampValue)))
+            
+            elif config == 2: # Colors
+                static_color_list.append(Color(rgb=(1,0,0)))
+                static_color_list.append(Color(rgb=(0,1,0)))
+                static_color_list.append(Color(rgb=(1,0.8,0)))
+                static_color_list.append(Color(rgb=(0,0,1)))
+                static_color_list.append(Color(rgb=(1,0,1)))
+                ac_list.append(Color(rgb=(ampValue,0,0)))
+                ac_list.append(Color(rgb=(0,ampValue,0)))
+                ac_list.append(Color(rgb=(ampValue,ampValue*0.8,0)))
+                ac_list.append(Color(rgb=(0,0,ampValue)))
+                ac_list.append(Color(rgb=(ampValue,0,ampValue)))
+
+            elif config == 3: #BB
                 ac_list.append(Color(rgb=(0,ampValue,ampValue)))
                 ac_list.append(Color(rgb=(0,0,ampValue)))
                 static_color_list.append(Color(rgb=(0,1,1)))
                 static_color_list.append(Color(rgb=(0,0,1)))
-            elif config == 1:
-                static_color_list.append(Color(rgb=(1,0,0)))
-                static_color_list.append(Color(rgb=(0,1,0)))
-                static_color_list.append(Color(rgb=(0,0,1)))
-                ac_list.append(Color(rgb=(ampValue,0,0)))
+            
+            elif config == 4: #White
+                #static_color_list.append(Color(rgb=(1,0.9,0.9)))
+                #static_color_list.append(Color(rgb=(0.6,0.5,0.5)))
+                static_color_list.append(Color(rgb=(0.90,0.80,0.80)))
+                static_color_list.append(Color(rgb=(0.50,0.45,0.45)))
+
+                #ac_list.append(Color(rgb=(ampValue,ampValue,ampValue)))
+                #ac_list.append(Color(rgb=(ampValue*0.6,ampValue*0.6,ampValue*0.6)))
+                ac_list.append(Color(rgb=(ampValue*0.9,ampValue*0.8,ampValue*0.8)))
+                ac_list.append(Color(rgb=(ampValue*0.5,ampValue*0.45,ampValue*0.45)))
+
+            elif config == 5: # Green
                 ac_list.append(Color(rgb=(0,ampValue,0)))
-                ac_list.append(Color(rgb=(0,0,ampValue)))
-            elif config == 3:
-                static_color_list.append(Color(rgb=(1,0.9,0.9)))
-                static_color_list.append(Color(rgb=(0.6,0.5,0.5)))
-                ac_list.append(Color(rgb=(ampValue,ampValue,ampValue)))
-                ac_list.append(Color(rgb=(ampValue*0.6,ampValue*0.6,ampValue*0.6)))
-            else:
+                ac_list.append(Color(rgb=(0,ampValue, 0)))
+                static_color_list.append(Color(rgb=(0,1,0)))
+                static_color_list.append(Color(rgb=(0,1,0)))
+            
+            else: # Red
                 # CUSTOM COLORS BASED OFF OF STUFF defined in the first 
                 # two lines of colorsettings.txt
                 static_color_list.append(Color(rgb=(c1_r,c1_g,c1_b)))
@@ -592,7 +640,10 @@ if __name__ == '__main__':
                     last_hue_c2 = static_color_list[1]
                     # send new colors to hue
                     thread.start_new_thread(hue_send, (2, last_hue_c2))
-            if config == 1:
+            
+
+            # send to tree
+            if config == 0 or config == 1 or config == 2:
                 pattern = (elem.hex_l for elem in ac_list)
                 #print(pattern)
                 if k:
