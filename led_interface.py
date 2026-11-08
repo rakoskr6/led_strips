@@ -40,7 +40,21 @@ SERIAL_BAUD = 500000
 NUM_LEDS = 500
 NUM_SUBPIXELS = NUM_LEDS * 3      # one byte each for red, green and blue
 FRAME_COMMAND = 0                 # command byte meaning "one colour per LED follows"
-FRAME_DELAY = 0.05                # seconds to wait after sending each frame
+FRAME_LENGTH = NUM_SUBPIXELS + 1
+# The Arduino only finds the start of a frame by counting bytes, and it can't
+# receive while FastLED.show() runs (about 15 ms for 500 LEDs). So after each
+# frame has been fully sent, wait SHOW_GAP before sending the next one. The
+# next frame is built during the gap, so this doesn't delay what you see; one
+# frame takes about 30 ms to send + 20 ms gap = 50 ms (20 frames a second).
+# Below 0.015 the first LEDs can start showing the wrong colours again.
+SHOW_GAP = 0.020
+SERIAL_WRITE_TIMEOUT = 1.0        # seconds; longer means the Arduino stopped reading
+# A burst of FRAME_LENGTH palette commands (0x02, each one byte long) brings the
+# Arduino back to the start of a frame wherever it was. The strip briefly shows
+# its built-in Christmas palette. RESYNC_SETTLE covers the last few palette
+# redraws it may still be doing after the burst.
+RESYNC_BYTE = 0x02
+RESYNC_SETTLE = 0.1
 
 # Audio input (Audio Injector HAT), passed straight through to the speakers.
 AUDIO_CHANNELS = 2
@@ -496,12 +510,41 @@ class Heartbeat:
 
 # --------------------------------------------------------------- main loop
 
-def open_arduino():
-    arduino = serial.Serial(SERIAL_PORT, SERIAL_BAUD, write_timeout=0, timeout=5)
-    logger.info('Waiting for the Arduino on %s...', SERIAL_PORT)
-    greeting = arduino.readline().decode('ascii', errors='replace').strip()
-    logger.info('Arduino says: %s', greeting or '(nothing within 5 seconds)')
-    return arduino
+class Arduino:
+    """The serial link to the Arduino, paced so it never loses track of frames."""
+
+    def __init__(self, port=SERIAL_PORT):
+        self.serial = serial.Serial(port, SERIAL_BAUD, write_timeout=SERIAL_WRITE_TIMEOUT, timeout=5)
+        self._next_send = 0.0
+        logger.info('Waiting for the Arduino on %s...', port)
+        greeting = self.serial.readline().decode('ascii', errors='replace').strip()
+        logger.info('Arduino says: %s', greeting or '(nothing within 5 seconds)')
+
+    def _write(self, data, gap):
+        wait = self._next_send - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        self.serial.write(data)
+        self.serial.flush()   # returns once every byte has gone out
+        self._next_send = time.monotonic() + gap
+
+    def resync(self):
+        """Make sure the Arduino's next byte is the start of a frame."""
+        logger.info('Resyncing the Arduino')
+        self._write(bytes([RESYNC_BYTE]) * FRAME_LENGTH, RESYNC_SETTLE)
+
+    def send(self, frame):
+        try:
+            self._write(frame, SHOW_GAP)
+        except serial.SerialTimeoutException:
+            # Part of the frame may be stuck or lost, so the Arduino has
+            # probably lost its place.
+            logger.warning('Serial write timed out; resyncing the Arduino')
+            self.serial.reset_output_buffer()
+            self.resync()
+
+    def close(self):
+        self.serial.close()
 
 
 def run():
@@ -510,7 +553,8 @@ def run():
     heartbeat.beat()
 
     pixelblazes = start_pixelblazes()
-    arduino = open_arduino()
+    arduino = Arduino()
+    arduino.resync()
     config_file = ConfigFile()
     images = ImageFrames()
     frames = FrameBuilder()
@@ -522,7 +566,6 @@ def run():
     frame_number = 0
     swap = False
     stalls = 0
-    short_writes = 0
 
     try:
         while True:
@@ -588,14 +631,7 @@ def run():
                                     config['adjust'])
 
                 image_frames = images.get(config['image_path']) if config['load_image'] else None
-                data = frames.build(colors, brightness, config, image_frames)
-                sent = arduino.write(data)
-                if sent is not None and sent != len(data):
-                    short_writes += 1
-                    if short_writes in (1, 10, 100) or short_writes % 1000 == 0:
-                        logger.warning('Serial write sent %d of %d bytes (%d short writes so far)',
-                                       sent, len(data), short_writes)
-                time.sleep(FRAME_DELAY)
+                arduino.send(frames.build(colors, brightness, config, image_frames))
 
             logger.warning('Restarting the audio stream')
             audio.close()
