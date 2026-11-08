@@ -9,6 +9,7 @@ warning, and an invalid value leaves the file unchanged.
 """
 
 import json
+import math
 import os
 import sys
 import tempfile
@@ -22,12 +23,15 @@ def convert(value, original_value):
         if lowered not in ('true', 'false'):
             raise ValueError('expected true or false, got ' + repr(value))
         return lowered == 'true'
-    if isinstance(original_value, int):
+    if isinstance(original_value, (int, float)):
         number = float(value)
-        # Keep whole numbers whole, but don't silently round "0.5" to 0.
-        return int(number) if number.is_integer() else number
-    if isinstance(original_value, float):
-        return float(value)
+        if not math.isfinite(number):
+            # json.dumps would write Infinity/NaN, which isn't valid JSON for the website.
+            raise ValueError('expected a number, got ' + repr(value))
+        if isinstance(original_value, int):
+            # Keep whole numbers whole, but don't silently round "0.5" to 0.
+            return int(number) if number.is_integer() else number
+        return number
     return str(value)
 
 
