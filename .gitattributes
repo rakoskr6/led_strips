@@ -1,0 +1,11 @@
+# This project only runs on the Raspberry Pi, so keep every text file in
+# Linux (LF) format, even when checked out on Windows.
+* text=auto eol=lf
+
+# Binary files
+*.gif binary
+*.png binary
+*.jpg binary
+
+# Leave the Arduino sources byte-for-byte as they are.
+arduino_code/** -text
