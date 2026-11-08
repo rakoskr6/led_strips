@@ -56,3 +56,13 @@ Run it from this folder (systemd runs it with
 cd /home/pi/led_strips
 venv/bin/python led_interface.py
 ```
+
+## Tests
+
+The tests use a fake Arduino, fake audio and fake Pixelblazes, so they don't
+need the hardware and are safe to run while the lights are on:
+
+```sh
+cd /home/pi/led_strips
+venv/bin/python -m unittest discover -s tests -v
+```
