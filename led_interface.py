@@ -398,12 +398,15 @@ class PixelBlaze:
 
     send() never blocks, so a Pixelblaze that is slow or offline can't stall
     the main LEDs. While it's offline, colours are dropped and a reconnect is
-    tried every PIXELBLAZE_RETRY_INTERVAL seconds.
+    tried every retry_interval seconds.
     """
 
-    def __init__(self, name, address):
+    def __init__(self, name, address, connect=create_connection,
+                 retry_interval=PIXELBLAZE_RETRY_INTERVAL):
         self.name = name
         self.address = address
+        self._connect_to = connect
+        self._retry_interval = retry_interval
         self._ws = None
         self._pending = None
         self._lock = threading.Lock()
@@ -423,12 +426,12 @@ class PixelBlaze:
 
     def _connect(self):
         try:
-            self._ws = create_connection('ws://' + self.address, timeout=PIXELBLAZE_TIMEOUT)
+            self._ws = self._connect_to('ws://' + self.address, timeout=PIXELBLAZE_TIMEOUT)
         except Exception as e:
             self._ws = None
             if not self._reported_down:
                 logger.warning("Can't reach Pixelblaze %s at %s (%s); retrying every %d s",
-                               self.name, self.address, e, PIXELBLAZE_RETRY_INTERVAL)
+                               self.name, self.address, e, self._retry_interval)
                 self._reported_down = True
             return False
         logger.info('Connected to Pixelblaze %s at %s', self.name, self.address)
@@ -445,7 +448,7 @@ class PixelBlaze:
     def _run(self):
         while True:
             if self._ws is None and not self._connect():
-                time.sleep(PIXELBLAZE_RETRY_INTERVAL)
+                time.sleep(self._retry_interval)
                 continue
             self._wake.wait()
             self._wake.clear()
@@ -514,7 +517,14 @@ class Arduino:
     """The serial link to the Arduino, paced so it never loses track of frames."""
 
     def __init__(self, port=SERIAL_PORT):
-        self.serial = serial.Serial(port, SERIAL_BAUD, write_timeout=SERIAL_WRITE_TIMEOUT, timeout=5)
+        try:
+            # exclusive: a second copy of this script can't open the port and
+            # mix its frames in with ours.
+            self.serial = serial.Serial(port, SERIAL_BAUD, write_timeout=SERIAL_WRITE_TIMEOUT,
+                                        timeout=5, exclusive=True)
+        except serial.SerialException as e:
+            logger.error("Can't open %s (%s). Is another copy of led_interface.py running?", port, e)
+            sys.exit(1)
         self._next_send = 0.0
         logger.info('Waiting for the Arduino on %s...', port)
         greeting = self.serial.readline().decode('ascii', errors='replace').strip()
@@ -548,13 +558,13 @@ class Arduino:
 
 
 def run():
-    heartbeat = Heartbeat()
-    logger.info('Starting LED strip interface (pid %d)', heartbeat.pid)
-    heartbeat.beat()
-
-    pixelblazes = start_pixelblazes()
+    logger.info('Starting LED strip interface (pid %d)', os.getpid())
+    # Open the Arduino first, so a second copy exits before touching status.log.
     arduino = Arduino()
+    heartbeat = Heartbeat()
+    heartbeat.beat()
     arduino.resync()
+    pixelblazes = start_pixelblazes()
     config_file = ConfigFile()
     images = ImageFrames()
     frames = FrameBuilder()

@@ -9,7 +9,7 @@ import time
 
 import serial
 
-ser = serial.Serial('/dev/ttyACM0', 500000, write_timeout=0, timeout=5)
+ser = serial.Serial('/dev/ttyACM0', 500000, write_timeout=0, timeout=5, exclusive=True)
 print(ser.readline().decode('ascii', errors='replace').strip())
 time.sleep(1)
 print('GO! (Ctrl+C to stop)')
