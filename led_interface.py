@@ -12,9 +12,7 @@ import traceback
 from datetime import datetime
 
 import numpy
-import phue
 import serial
-# import thread
 from PIL import Image
 from colour import Color
 from scipy import signal
@@ -287,15 +285,6 @@ class PixelBlaze():
                 print("Failed to reconnect after 10 seconds... skipping")
                 self.failed = True
 
-def hue_send(index, inColor):
-    global lights
-    hueHue = int(inColor.hue*65535)
-    hueSaturation = int(inColor.saturation*254)
-    hueBrightness = int(inColor.luminance*128)
-    lights[index].hue = hueHue
-    lights[index].saturation = hueSaturation
-    lights[index].brightness = hueBrightness
-
 def heartbeat():
     global pid
     global last_heartbeat_time
@@ -319,8 +308,6 @@ if __name__ == '__main__':
     global b, a
     global num_leds
     global lightConfig
-    global lights
-    global bridgeEnabled
     global last_heartbeat_time
     global pid
     global image_pixel_list
@@ -335,11 +322,10 @@ if __name__ == '__main__':
     print("Starting on pid {} at time {}".format(pid, last_heartbeat_time))
     heartbeat()
     
-    # read configuration options for the phillips hue and pixelBlaze.
+    # read configuration options for the pixelBlaze.
     network_config = configparser.ConfigParser()
     network_config.read('network.cfg')
     print(network_config.sections())
-    bridgeEnabled = False
     # this is the number of subpixels; aka: the number of LEDs * 3
     num_leds = 500*3 # originally 500
     decoded = None
@@ -368,34 +354,6 @@ if __name__ == '__main__':
         else:
             print("Failed to connect to PixelBlaze at " + addr)
 
-    #print(ser.read(ser.in_waiting))
-    # Returned exception if Hue not found, so added try
-    try:
-        use_hue = network_config['phue'].getboolean('enabled')
-    except Exception as e:
-        use_hue = False
-    if not use_hue:
-        print("Philips Hue is disabled via network.cfg")
-    # init all the philips hue bridge code
-    if use_hue:
-        huebridge = phue.Bridge(network_config['phue']['address'])
-        try:
-            print("Connecting to hue...")
-            huebridge.connect()
-            bridgeEnabled = True
-            print("Connected!")
-        except Exception as e:
-            print("{}".format(e))
-            bridgeEnabled = False
-        huebridge.set_light([1,3,4], 'on', True, transitiontime=0)
-        lights = huebridge.get_light_objects()
-        lights.pop(1)
-        print(lights)
-        for light in lights:
-            light.transitiontime = 0 
-        last_hue_c = Color(rgb=(0,0,0))
-        last_hue_c2 = Color(rgb=(0,0,0))
-    
     print("Starting serial connection to Arduino...")
     print(ser.readline())
     print("read!")
@@ -629,19 +587,6 @@ if __name__ == '__main__':
                 ac_list.append(Color(rgb=(ampValue*c1_r,ampValue*c1_g,ampValue*c1_b)))
                 ac_list.append(Color(rgb=(ampValue*c2_r,ampValue*c2_g,ampValue*c2_b)))
                 
-            # Hue bulb integration
-            if(bridgeEnabled):
-                if last_hue_c != static_color_list[0]:
-                    # send new colors to hue
-                    last_hue_c = static_color_list[0]
-                    thread.start_new_thread(hue_send, (0, last_hue_c))
-                    thread.start_new_thread(hue_send, (1, last_hue_c))
-                if last_hue_c2 != static_color_list[1]:
-                    last_hue_c2 = static_color_list[1]
-                    # send new colors to hue
-                    thread.start_new_thread(hue_send, (2, last_hue_c2))
-            
-
             # send to tree
             if config == 0 or config == 1 or config == 2:
                 pattern = (elem.hex_l for elem in ac_list)
