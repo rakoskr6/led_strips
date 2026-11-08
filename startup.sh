@@ -1,11 +1,12 @@
-# Add the following to crontab -e: @reboot /home/pi/led_strips/startup.sh
-SHELL=/bin/sh
-PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin 
+#!/bin/sh
+# Starts the lights by hand or from cron (@reboot /home/pi/led_strips/startup.sh).
+# On the current Pi, systemd starts led_interface.py instead, and the mixer
+# settings are restored at boot by alsactl, so this script is optional.
+#
+# Set USE_JACK=1 to start the JACK audio server first.
 
-sleep 5
+if [ "${USE_JACK:-0}" = "1" ]; then
+    jack_control start || echo "startup.sh: could not start JACK, continuing without it" >&2
+fi
 
-jack_control start
-alsactl --file /usr/share/doc/audioInjector/asound.state.RCA.thru.test restore
-
-#@reboot ./home/pi/led_strips/start_from_server.sh
-sh /home/pi/led_strips/start_from_server.sh
+exec sh /home/pi/led_strips/start_from_server.sh

@@ -1,11 +1,10 @@
-# This is my best guess based on what krakos had on the RPI
-bs4
-colour
+# Python packages used by led_interface.py and set_config.py.
+# On the Pi these all come from apt (python3-numpy, python3-scipy, python3-pil,
+# python3-serial, python3-websocket, python3-pyaudio) and the venv is created
+# with --system-site-packages, so nothing needs to be pip-installed.
 numpy
-phue
-pillow
-pyjwt
-pyserial
-requests
 scipy
-thread
+pillow
+pyserial
+websocket-client
+pyaudio

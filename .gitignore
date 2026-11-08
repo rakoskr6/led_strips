@@ -116,3 +116,6 @@ ENV/
 # local files
 network.cfg
 *.old
+
+# temporary files written while saving status.log / config.json
+*.tmp

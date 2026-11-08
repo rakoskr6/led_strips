@@ -1,19 +1,28 @@
-import serial, time
-ser = serial.Serial('/dev/ttyACM0', 500000, writeTimeout=0)
-while not ser.in_waiting:
-    continue
-print(ser.read(ser.in_waiting))
+#!/usr/bin/env python3
+"""Hardware test: fade the whole strip through blue, green and red.
+
+Uses the Arduino's "one colour for every LED" command (0x01, r, g, b).
+Stop led_interface.py first, since only one program can use the serial port.
+"""
+
+import time
+
+import serial
+
+ser = serial.Serial('/dev/ttyACM0', 500000, write_timeout=0, timeout=5)
+print(ser.readline().decode('ascii', errors='replace').strip())
 time.sleep(1)
+print('GO! (Ctrl+C to stop)')
+
 i = 0
-print('GO!')
-time.sleep(1)
-'''
-while(1):
-   time.sleep(0.016)
-   ser.write(bytearray([1,0,0,i%255]))
-   time.sleep(0.016)
-   ser.write(bytearray([1,0,i%255,0]))
-   time.sleep(0.016)
-   ser.write(bytearray([1,i%255,0,0]))
-   i += 1
-'''
+try:
+    while True:
+        level = i % 255
+        for color in ((0, 0, level), (0, level, 0), (level, 0, 0)):
+            ser.write(bytes([1, *color]))
+            time.sleep(0.016)
+        i += 1
+except KeyboardInterrupt:
+    ser.write(bytes([1, 0, 0, 0]))
+finally:
+    ser.close()
