@@ -16,6 +16,8 @@ details are deliberately left out. They live in `network.cfg` and on the old car
 - Step 1 (base system) done with [setup/base-system.sh](setup/base-system.sh), including a fixed IP and Wi-Fi off.
 - Step 2 (audio) done remotely: card detected, mixer restored, capture works. The line-in test with
   real audio and the reboot check moved to step 5a, for when someone is at the Pi.
+- Step 3 (LED code) done remotely: venv built, tests pass. The light checks moved to step 5a;
+  the Pixelblazes didn't answer.
 - Website committed to `christmas_led_site`; Apache is not installed yet.
 - **Deferred:** everything internet-facing (step 6). No router ports are forwarded.
 
@@ -176,11 +178,22 @@ sudo apt install python3-venv python3-numpy python3-scipy python3-pil python3-se
 python3 -m venv --system-site-packages /opt/led_strips/venv
 cd /opt/led_strips && venv/bin/python -m unittest discover -s tests -v
 ```
-- [ ] Tests pass on the Pi
-- [ ] Copy in `network.cfg` and `config.json`, run `venv/bin/python led_interface.py` by hand,
-      and check the Arduino frames (first LEDs correct), both Pixelblazes, audio, and image mode
-- [ ] `venv/bin/python led_solid.py` works as a quick strip test
-- [ ] Merge `python3-conversion` into `master`
+Done remotely (2026-11-23):
+- [x] apt packages and venv installed: Python 3.13.5, NumPy 2.2.4, SciPy 1.15.3, Pillow 11.1.0,
+      pyserial 3.5, websocket-client 1.8.0, PyAudio 0.2.13
+- [x] Tests pass on the Pi: 34 run, 1 skipped (it compares against the removed `colour` library)
+- [x] PyAudio opens the stream the way `led_interface.py` does (float32, 32 kHz, 2 ch, in + out)
+      and gets steady callbacks. The `JackShmReadWritePtr` / "Cannot connect to server" lines are
+      PortAudio probing for JACK; harmless.
+- [x] Arduino Mega present as `/dev/ttyACM0` (group `dialout`, which `krakos` is in). The port was
+      not opened, because that resets the Mega and could blank the strips.
+- [x] `network.cfg` copied. Its leftover `[phue]` section is unused and harmless.
+- [ ] Both Pixelblazes: "No route to host"; they don't answer ARP, so they're off or their IPs
+      changed. Check when someone is at the Pi (step 5a), and reserve their IPs on the gateway too.
+- [ ] Copy the old Pi's live `config.json` (the repo's copy is older), if it's wanted
+
+The checks that need someone watching the lights are in step 5a. Merge
+`python3-conversion` into `master` after those pass.
 
 ### 4. Service instead of cron/PHP launching
 - [ ] `led-strips.service`: `User=krakos`, `WorkingDirectory=/opt/led_strips`,
@@ -232,6 +245,11 @@ cd /opt/led_strips && venv/bin/python -m unittest discover -s tests -v
 - [ ] `sudo reboot`, then check `amixer sget 'Capture'` and `amixer sget 'Input Mux'` still read
       74% / `Line In` (alsa-utils restoring `/var/lib/alsa/asound.state`). Can be done remotely.
 - [ ] Install JACK only if the lights turn out to need it (not expected)
+- [ ] Pixelblazes on and reachable at the addresses in `network.cfg` (IP reservations on the gateway)
+- [ ] `venv/bin/python led_solid.py` lights the strips as a quick test
+- [ ] Run `venv/bin/python led_interface.py` by hand (or via the service from step 4) and check:
+      Arduino frames (first LEDs the right colour), both Pixelblazes, audio response, image mode
+- [ ] Then merge `python3-conversion` into `master`
 
 ### 6. Going public (last; deferred, no ports forwarded yet)
 - [ ] Domain on Cloudflare; `cloudflared` tunnel to `http://localhost:80`
