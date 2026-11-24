@@ -1,0 +1,32 @@
+# systemd service that runs the lights. Installed by:
+#   sudo cp /opt/led_strips/setup/led-strips.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now led-strips.service
+# Logs: journalctl -u led-strips -f
+[Unit]
+Description=LED strips (led_interface.py)
+# Start after the sound card's mixer settings are restored and the network is up
+# (the Pixelblazes are reached over the network; led_interface.py retries anyway).
+After=alsa-restore.service network-online.target
+Wants=network-online.target
+# Never give up restarting (the default gives up after 5 failures in 10 s)
+StartLimitIntervalSec=0
+
+[Service]
+User=krakos
+WorkingDirectory=/opt/led_strips
+ExecStart=/opt/led_strips/venv/bin/python led_interface.py
+# Send log lines to the journal straight away instead of in buffered chunks
+Environment=PYTHONUNBUFFERED=1
+# Restart after a crash or an unplugged Arduino, but not after systemctl stop
+Restart=on-failure
+RestartSec=5
+
+# Limit what the program can touch: no privilege gain, /usr and /etc read-only,
+# no access to home folders, its own /tmp
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

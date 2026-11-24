@@ -18,6 +18,7 @@ details are deliberately left out. They live in `network.cfg` and on the old car
   real audio and the reboot check moved to step 5a, for when someone is at the Pi.
 - Step 3 (LED code) done remotely: venv built, tests pass, `led_interface.py` runs against the
   Arduino (no LEDs attached). Watching the lights and the Pixelblazes (off for now) moved to step 5a.
+- Step 4 done: the lights run as `led-strips.service` (systemd), enabled at boot.
 - Website committed to `christmas_led_site`; Apache is not installed yet.
 - **Deferred:** everything internet-facing (step 6). No router ports are forwarded.
 
@@ -60,9 +61,7 @@ details are deliberately left out. They live in `network.cfg` and on the old car
 [phue_leds.py]: https://github.com/rakoskr6/led_strips/blob/master/phue_leds.py
 [phue_sbox.py]: https://github.com/rakoskr6/led_strips/blob/master/phue_sbox.py
 
-The code mentions a systemd service ([startup.sh:3](startup.sh:3), [led_interface.py:658](led_interface.py:658)),
-but **no unit file is in the repo**. If one already exists on the new Pi, commit a copy
-(see step 4).
+The lights now run as a systemd service; the unit file is [setup/led-strips.service](setup/led-strips.service) (step 4).
 
 ## Decisions
 
@@ -198,12 +197,61 @@ Done remotely (2026-11-23):
 The checks that need someone watching the lights are in step 5a. Merge
 `python3-conversion` into `master` after those pass.
 
-### 4. Service instead of cron/PHP launching
-- [ ] `led-strips.service`: `User=krakos`, `WorkingDirectory=/opt/led_strips`,
-      `ExecStart=/opt/led_strips/venv/bin/python led_interface.py`, `Restart=on-failure`.
-      Commit the unit to the repo (for example `systemd/led-strips.service`).
-- [ ] No `@reboot` crontab line; [startup.sh](startup.sh) / [start_from_server.sh](start_from_server.sh)
-      are then only for running by hand
+### 4. Run the lights as a service (done 2026-11-23)
+
+**What this is.** On the old Pi, the lights were started by a cron `@reboot` line
+running `startup.sh`, and the website started and stopped them by running scripts and
+`kill`. Nothing watched the program: if it crashed, the lights stayed off until someone
+noticed.
+
+Now **systemd** runs it. systemd is the program that starts everything else on the Pi
+at boot (SSH, networking, the firewall). A *service* is a small text file telling
+systemd how to run one program. Ours is
+[setup/led-strips.service](setup/led-strips.service), copied to
+`/etc/systemd/system/led-strips.service`. It says:
+
+- run `venv/bin/python led_interface.py` in `/opt/led_strips`, as `krakos` (not root);
+- start it at every boot, after the sound card and network are ready;
+- if it crashes or the Arduino is unplugged, start it again 5 s later, and keep trying;
+  but if someone *stops* it on purpose, leave it stopped;
+- keep it away from home folders and from changing system files.
+
+Its output goes to the system log (the "journal") instead of the screen.
+
+**Everyday commands**
+
+| To | Run |
+|---|---|
+| See if it's running | `systemctl status led-strips` |
+| Stop / start / restart | `sudo systemctl stop led-strips` (or `start`, `restart`) |
+| Watch its log live | `journalctl -u led-strips -f` (Ctrl+C to quit) |
+| See the log since boot | `journalctl -u led-strips -b` |
+| Don't start it at boot | `sudo systemctl disable led-strips` (`enable` to undo) |
+| After editing the service file | copy it to `/etc/systemd/system/`, then `sudo systemctl daemon-reload` and `restart` |
+
+Only one copy can use the Arduino, so stop the service before running `led_solid.py`
+or `led_interface.py` by hand. [startup.sh](startup.sh) and [start_from_server.sh](start_from_server.sh)
+are now only for running by hand.
+
+**Checked:**
+- [x] No crontab lines to remove (none for `krakos` or root on the new Pi)
+- [x] Installed, enabled at boot, running: finds the Arduino, starts audio, writes `status.log`
+      every second with the service's own PID
+- [x] Killed with `kill -9` → restarted by systemd 5 s later
+- [x] `systemctl stop` → stops cleanly, frees the serial port, and stays stopped
+- [x] About 30% of one CPU core and 100 MB of memory on the Pi 3; 46 °C
+- [ ] Starts on its own after a reboot (checked with the reboot in step 5a)
+
+### 5. Website on Apache 2.4 / PHP 8.4
+Install Apache first: it creates the `www-data` user the website runs as, which the
+access rules below need.
+
+- [ ] `sudo apt install apache2 libapache2-mod-php`; keep the default `www-data` user
+- [x] Old web root committed to `christmas_led_site` (`master`), line endings normalised to LF
+- [ ] Clone it on the Pi to `/var/www/christmas_led_site` and point Apache's `DocumentRoot` there
+- [ ] Keep `.git` out of the served directory, or block it (`RedirectMatch 404 /\.git`)
+
+What the website may do with the lights:
 - [ ] Let `www-data` read `status.log` and write `config.json`, and nothing else.
       Everything else stays owned by `krakos` and read-only to the website:
       ```bash
@@ -217,11 +265,7 @@ The checks that need someone watching the lights are in step 5a. Merge
       `systemctl start|stop led-strips.service`
 - [ ] Volume: `www-data` in the `audio` group; PHP checks for an integer 0–100 before calling the volume script
 
-### 5. Website on Apache 2.4 / PHP 8.4
-- [x] Old web root committed to `christmas_led_site` (`master`), line endings normalised to LF
-- [ ] Clone it on the Pi to `/var/www/christmas_led_site` and point Apache's `DocumentRoot` there
-- [ ] `sudo apt install apache2 libapache2-mod-php`; keep the default `www-data` user
-- [ ] Keep `.git` out of the served directory, or block it (`RedirectMatch 404 /\.git`)
+The PHP itself:
 - [x] PHP paths changed from `/home/pi/led_strips/` to `/opt/led_strips/` (`status.php`,
       `options/`, `lights_*/`, `start/index.php`)
 - [ ] `status.php`: allow a few seconds of slack:
@@ -246,7 +290,8 @@ The checks that need someone watching the lights are in step 5a. Merge
       on both channels. Compare the lights' response with the old Pi and adjust Capture if needed
       (then `sudo alsactl store 0`).
 - [ ] `sudo reboot`, then check `amixer sget 'Capture'` and `amixer sget 'Input Mux'` still read
-      74% / `Line In` (alsa-utils restoring `/var/lib/alsa/asound.state`). Can be done remotely.
+      74% / `Line In` (alsa-utils restoring `/var/lib/alsa/asound.state`), and that
+      `systemctl status led-strips` shows it started on its own. Can be done remotely.
 - [ ] Install JACK only if the lights turn out to need it (not expected)
 - [ ] Pixelblazes on and reachable at the addresses in `network.cfg` (IP reservations on the gateway)
 - [ ] LEDs plugged into the Arduino; `venv/bin/python led_solid.py` fades them blue, green, red
@@ -266,4 +311,3 @@ The checks that need someone watching the lights are in step 5a. Merge
 - Who should be able to control the lights: only invited people, or anyone who visits?
 - Is there a domain already, and is moving its DNS to Cloudflare OK?
 - What did the old crontab and sudoers actually contain, and was JACK running?
-- Is there already a `led-strips.service` on the new Pi, and what does it contain?
