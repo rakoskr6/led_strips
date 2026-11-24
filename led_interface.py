@@ -6,7 +6,7 @@ brightness value and streams colour frames over USB serial to the Arduino Mega
 running FastLED (arduino_code/led_control.ino). The colours can also be
 mirrored to Pixelblaze controllers over websocket.
 
-Files this script uses, relative to the working directory (/home/pi/led_strips):
+Files this script uses, relative to the working directory (/opt/led_strips):
   config.json        settings, re-read every frame so the website can change them live
   colorsettings.txt  first two lines are the two custom colours ("r,g,b" from 0 to 1)
   network.cfg        Pixelblaze addresses (not in git)

@@ -53,8 +53,11 @@ but **no unit file is in the repo**. If one already exists on the new Pi, commit
 
 ## Decisions
 
-- Fresh Trixie **Lite** install, user `pi` (paths hardcode `/home/pi`), Ethernet only.
-- Python 3 from apt plus a `--system-site-packages` venv at `/home/pi/led_strips/venv`;
+- Fresh Trixie **Lite** install, user `krakos`, Ethernet only.
+- The repo lives in **`/opt/led_strips`**, not a home folder, so nothing depends on
+  the login name and Apache can reach it. The scripts find their files relative to
+  their own folder; only the website PHP needs the full path.
+- Python 3 from apt plus a `--system-site-packages` venv at `/opt/led_strips/venv`;
   nothing pip-installed. No Python 2, PyPy, PulseAudio or desktop; JACK only if the old
   system really used it.
 - systemd runs the lights (`led-strips.service`), not cron or PHP.
@@ -116,8 +119,13 @@ to GitHub), anything from `/usr/local` (hand-built PortAudio, pip packages).
 - [ ] Reserve the Pi's IP on the router (DHCP reservation)
 - [ ] SSH keys only: `PasswordAuthentication no` in `/etc/ssh/sshd_config.d/`
 - [ ] Firewall (nftables or ufw): SSH and HTTP from the LAN only
-- [ ] `pi` in `dialout` and `audio` groups
-- [ ] New SSH key for GitHub; clone this repo to `/home/pi/led_strips`, check out `python3-conversion`
+- [ ] `krakos` in `dialout` and `audio` groups
+- [ ] `sudo apt install git` (not included in Lite)
+- [ ] New SSH key for GitHub; clone this repo:
+      ```bash
+      sudo mkdir -p /opt/led_strips && sudo chown krakos: /opt/led_strips
+      git clone -b python3-conversion https://github.com/rakoskr6/led_strips /opt/led_strips
+      ```
 
 ### 2. Audio (riskiest part)
 - [ ] `/boot/firmware/config.txt`: add `dtoverlay=audioinjector-wm8731-audio`;
@@ -144,8 +152,8 @@ to GitHub), anything from `/usr/local` (hand-built PortAudio, pip packages).
 ### 3. LED code on the hardware
 ```bash
 sudo apt install python3-venv python3-numpy python3-scipy python3-pil python3-serial python3-websocket python3-pyaudio
-python3 -m venv --system-site-packages /home/pi/led_strips/venv
-cd /home/pi/led_strips && venv/bin/python -m unittest discover -s tests -v
+python3 -m venv --system-site-packages /opt/led_strips/venv
+cd /opt/led_strips && venv/bin/python -m unittest discover -s tests -v
 ```
 - [ ] Tests pass on the Pi
 - [ ] Copy in `network.cfg` and `config.json`, run `venv/bin/python led_interface.py` by hand,
@@ -154,17 +162,20 @@ cd /home/pi/led_strips && venv/bin/python -m unittest discover -s tests -v
 - [ ] Merge `python3-conversion` into `master`
 
 ### 4. Service instead of cron/PHP launching
-- [ ] `led-strips.service`: `User=pi`, `WorkingDirectory=/home/pi/led_strips`,
-      `ExecStart=/home/pi/led_strips/venv/bin/python led_interface.py`, `Restart=on-failure`.
+- [ ] `led-strips.service`: `User=krakos`, `WorkingDirectory=/opt/led_strips`,
+      `ExecStart=/opt/led_strips/venv/bin/python led_interface.py`, `Restart=on-failure`.
       Commit the unit to the repo (for example `systemd/led-strips.service`).
 - [ ] No `@reboot` crontab line; [startup.sh](startup.sh) / [start_from_server.sh](start_from_server.sh)
       are then only for running by hand
-- [ ] Files the website touches must be reachable by `www-data`, and Trixie home dirs may be 0700.
-      Either open `/home/pi` and the repo to traversal (`chmod o+x`) or move `config.json` and
-      `status.log` to e.g. `/var/lib/led-strips/`, owned `pi:www-data`, mode 664.
-      Paths: `CONFIG_FILE` in [set_config.py:17](set_config.py:17); `CONFIG_FILE` / `STATUS_FILE`
-      in [led_interface.py:66](led_interface.py:66) (relative to `WorkingDirectory`). If `config.json`
-      moves, give `set_config.py` a writable directory too, or it falls back to writing in place.
+- [ ] Let `www-data` read `status.log` and write `config.json`, and nothing else.
+      Everything else stays owned by `krakos` and read-only to the website:
+      ```bash
+      sudo chgrp www-data /opt/led_strips /opt/led_strips/config.json
+      sudo chmod 2755 /opt/led_strips        # setgid: files replaced here keep group www-data
+      sudo chmod 664 /opt/led_strips/config.json
+      ```
+      `www-data` can't create files in the folder, so [set_config.py](set_config.py) falls back to
+      writing `config.json` in place when the website runs it. That's expected.
 - [ ] sudoers rule (`visudo -f /etc/sudoers.d/led-strips`) so `www-data` can only run
       `systemctl start|stop led-strips.service`
 - [ ] Volume: `www-data` in the `audio` group; PHP checks for an integer 0–100 before calling the volume script
@@ -173,7 +184,10 @@ cd /home/pi/led_strips && venv/bin/python -m unittest discover -s tests -v
 - [ ] Commit the old web root to `christmas_led_site` first (see above), then clone it on the Pi
 - [ ] `sudo apt install apache2 libapache2-mod-php`; keep the default `www-data` user
 - [ ] Keep `.git` out of the served directory, or block it (`RedirectMatch 404 /\.git`)
-- [ ] `status.php`: point it at the new `status.log` path. Allow a few seconds of slack:
+- [ ] Replace every `/home/pi/led_strips/` with `/opt/led_strips/` in the PHP: `status.php`,
+      `options/index.php`, `options/volume.php`, `lights_all/`, `lights_pattern/`, `lights_tree/`
+      and `start/index.php`
+- [ ] `status.php`: allow a few seconds of slack:
       it says "Alive" only if the heartbeat is ≤1 s old, and the heartbeat is now written
       once a second, so it can flicker to "Dead".
 - [ ] `start/index.php` → `sudo systemctl start|stop led-strips.service` instead of `kill` /

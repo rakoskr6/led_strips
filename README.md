@@ -24,11 +24,20 @@ network can follow along.
 
 ## Setup (Raspberry Pi OS, Python 3)
 
+The code lives in `/opt/led_strips`, so it doesn't depend on the login name and
+the website can reach it:
+
+```sh
+sudo apt install git
+sudo mkdir -p /opt/led_strips && sudo chown "$USER": /opt/led_strips
+git clone https://github.com/rakoskr6/led_strips /opt/led_strips
+```
+
 Install the Python packages from apt and create a venv that can see them:
 
 ```sh
-sudo apt install python3-numpy python3-scipy python3-pil python3-serial python3-websocket python3-pyaudio
-python3 -m venv --system-site-packages /home/pi/led_strips/venv
+sudo apt install python3-venv python3-numpy python3-scipy python3-pil python3-serial python3-websocket python3-pyaudio
+python3 -m venv --system-site-packages /opt/led_strips/venv
 ```
 
 Audio Injector drivers: https://github.com/Audio-Injector/stereo-and-zero
@@ -50,10 +59,10 @@ address = 192.168.1.51:81
 ```
 
 Run it from this folder (systemd runs it with
-`WorkingDirectory=/home/pi/led_strips`):
+`WorkingDirectory=/opt/led_strips`):
 
 ```sh
-cd /home/pi/led_strips
+cd /opt/led_strips
 venv/bin/python led_interface.py
 ```
 
@@ -63,6 +72,6 @@ The tests use a fake Arduino, fake audio and fake Pixelblazes, so they don't
 need the hardware and are safe to run while the lights are on:
 
 ```sh
-cd /home/pi/led_strips
+cd /opt/led_strips
 venv/bin/python -m unittest discover -s tests -v
 ```

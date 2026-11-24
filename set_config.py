@@ -14,7 +14,8 @@ import os
 import sys
 import tempfile
 
-CONFIG_FILE = '/home/pi/led_strips/config.json'
+# config.json sits next to this script (/opt/led_strips on the Pi).
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
 
 
 def convert(value, original_value):
