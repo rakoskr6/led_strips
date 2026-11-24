@@ -14,6 +14,7 @@ details are deliberately left out. They live in `network.cfg` and on the old car
   cloned to `/opt/led_strips` on `python3-conversion`, `network.cfg` copied over,
   SSH key login working.
 - Step 1 (base system) done with [setup/base-system.sh](setup/base-system.sh), including a fixed IP and Wi-Fi off.
+- Step 2 (audio): `config.txt` and `/etc/asound.conf` set; waiting on a reboot to test the card.
 - Website committed to `christmas_led_site`; Apache is not installed yet.
 - **Deferred:** everything internet-facing (step 6). No router ports are forwarded.
 
@@ -88,7 +89,7 @@ but **no unit file is in the repo**. If one already exists on the new Pi, commit
 **Not in git, copy from the old card/backup**
 - [x] `~/led_strips/network.cfg` (Pixelblaze addresses; gitignored; format in [README.md](README.md)), copied
 - `~/led_strips/config.json` (live settings; differs from git)
-- `/usr/share/doc/audioInjector/asound.state.RCA.thru.test` (the mixer state restored at boot)
+- [x] `/usr/share/doc/audioInjector/asound.state.RCA.thru.test` (the mixer state restored at boot), now in [setup/alsa/](setup/alsa/)
 - `/var/lib/alsa/asound.state` (last saved mixer state, card id `audioinjectorpi`)
 - Two old stashes in the Pi's `led_strips` clone (`stash@{0}`, `stash@{1}`): review or drop
 - Arduino tooling, only needed to reflash: `~/Arduino-Makefile`, `~/Downloads/FastLED`,
@@ -142,26 +143,28 @@ after 120 s unless you confirm that a new SSH session still gets in.
       the old file is `config.txt.bak`)
 
 ### 2. Audio (riskiest part)
-- [ ] `/boot/firmware/config.txt`: add `dtoverlay=audioinjector-wm8731-audio`;
-      set `dtparam=audio=off`; use `dtoverlay=vc4-kms-v3d,noaudio` so HDMI audio
-      doesn't take a card slot. (`dtoverlay=disable-wifi` is already in.)
-      Drop the old `pi3-disable-bt` / `enable_uart=0`; the Arduino is on USB, not the UART.
-- [ ] Check the overlay exists: `ls /boot/firmware/overlays/audioinjector*` (**unverified** on Trixie)
-- [ ] The Audio Injector `.deb` in [README.md](README.md) is from 2017 and may not install on Trixie
-      (**unverified**). Its saved state file is enough without it.
-- [ ] `aplay -l` / `arecord -l` show the card; confirm its id (`audioinjectorpi` on the old system)
-- [ ] `~/.asoundrc`: reference the card **by name**, not `card 0`:
-      ```
-      pcm.!default { type hw card audioinjectorpi }
-      ctl.!default { type hw card audioinjectorpi }
-      ```
-- [ ] Mixer: `sudo alsactl --file <saved RCA state> restore`, then `sudo alsactl store`.
-      The branch's scripts rely on alsa-utils restoring the stored state at boot,
-      so check it survives a reboot.
-- [ ] `amixer sget 'Capture'` still works; [website_get_volume.sh](website_get_volume.sh) parses its output
-- [ ] Line-in capture works at 32 kHz, 2 channels, full duplex
+Done before the reboot:
+- [x] `/boot/firmware/config.txt`: `dtparam=audio=off`, `dtoverlay=vc4-kms-v3d,noaudio`
+      (so HDMI audio doesn't take a card slot), `dtoverlay=audioinjector-wm8731-audio` under `[all]`
+      (next to `disable-wifi`). The old `pi3-disable-bt` / `enable_uart=0` are not carried over;
+      the Arduino is on USB, not the UART. Imager's original is `config.txt.bak`.
+- [x] The overlay ships with Trixie (`/boot/firmware/overlays/audioinjector-wm8731-audio.dtbo`),
+      so the 2017 Audio Injector `.deb` in [README.md](README.md) isn't needed
+- [x] Default ALSA device set **by name** in [setup/alsa/asound.conf](setup/alsa/asound.conf) →
+      `/etc/asound.conf` (system-wide, not `~/.asoundrc`, so `www-data`'s volume scripts use the card too)
+- [x] The `.deb`'s mixer states are in [setup/alsa/](setup/alsa/): `asound.state.RCA.thru.test`
+      (line-in, what the old Pi restored at boot) and `asound.state.MIC.thru.test`
+- [x] `alsa-utils` installed (Lite includes it)
+
+After `sudo reboot`:
+- [ ] `aplay -l` / `arecord -l` show only the Audio Injector, id `audioinjectorpi`
+- [ ] Mixer: `sudo alsactl --file /opt/led_strips/setup/alsa/asound.state.RCA.thru.test restore`,
+      then `sudo alsactl store` so alsa-utils restores it at every boot
+- [ ] `amixer sget 'Capture'` works; [website_get_volume.sh](website_get_volume.sh) parses its output
+- [ ] Line-in capture works at 32 kHz, 2 channels
       (`AUDIO_RATE` / `AUDIO_CHANNELS`, [led_interface.py:60](led_interface.py:60))
-- [ ] Install JACK only if the old system really used it
+- [ ] Reboot again and check the mixer settings survived
+- [ ] Install JACK only if the old system really used it (likely not)
 
 ### 3. LED code on the hardware
 ```bash
