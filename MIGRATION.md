@@ -8,6 +8,15 @@ branch. Items marked **unverified** need checking on the Pi.
 This repo is public, so local IPs, Wi-Fi details, key names and other private
 details are deliberately left out. They live in `network.cfg` and on the old card.
 
+## Status (2026-11-23)
+
+- New Pi: Trixie Lite, user `krakos`, packages updated, `git` installed, this repo
+  cloned to `/opt/led_strips` on `python3-conversion`, `network.cfg` copied over,
+  SSH key login working.
+- Step 1 (base system) done with [setup/base-system.sh](setup/base-system.sh), including a fixed IP and Wi-Fi off.
+- Website committed to `christmas_led_site`; Apache is not installed yet.
+- **Deferred:** everything internet-facing (step 6). No router ports are forwarded.
+
 ## Old system at a glance
 
 | Piece | How it worked on Stretch |
@@ -77,7 +86,7 @@ but **no unit file is in the repo**. If one already exists on the new Pi, commit
   `/opt/led_strips`.
 
 **Not in git, copy from the old card/backup**
-- `~/led_strips/network.cfg` (Pixelblaze addresses; gitignored; format in [README.md](README.md))
+- [x] `~/led_strips/network.cfg` (Pixelblaze addresses; gitignored; format in [README.md](README.md)), copied
 - `~/led_strips/config.json` (live settings; differs from git)
 - `/usr/share/doc/audioInjector/asound.state.RCA.thru.test` (the mixer state restored at boot)
 - `/var/lib/alsa/asound.state` (last saved mixer state, card id `audioinjectorpi`)
@@ -110,22 +119,32 @@ to GitHub), anything from `/usr/local` (hand-built PortAudio, pip packages).
 ## Checklist
 
 ### 1. Base system
-- [ ] `sudo apt update && sudo apt full-upgrade`, then `sudo apt install unattended-upgrades`
-- [ ] Reserve the Pi's IP on the router (DHCP reservation)
-- [ ] SSH keys only: `PasswordAuthentication no` in `/etc/ssh/sshd_config.d/`
-- [ ] Firewall (nftables or ufw): SSH and HTTP from the LAN only
-- [ ] `krakos` in `dialout` and `audio` groups
-- [ ] `sudo apt install git` (not included in Lite)
-- [ ] New SSH key for GitHub; clone this repo:
-      ```bash
-      sudo mkdir -p /opt/led_strips && sudo chown krakos: /opt/led_strips
-      git clone -b python3-conversion https://github.com/rakoskr6/led_strips /opt/led_strips
-      ```
+Run from your own SSH terminal: `sudo bash /opt/led_strips/setup/base-system.sh`.
+It does the first three items below. It applies the firewall live and rolls it back
+after 120 s unless you confirm that a new SSH session still gets in.
+
+- [x] `apt full-upgrade`, `unattended-upgrades` installed and enabled
+      (Debian security updates only; Raspberry Pi kernel/firmware updates still need a manual `apt full-upgrade`)
+- [x] SSH keys only: [setup/sshd-10-local.conf](setup/sshd-10-local.conf) → `/etc/ssh/sshd_config.d/10-local.conf`.
+      It must sort before Imager's `50-cloud-init.conf`, because sshd keeps the first value it reads.
+      Also turns off root login and X11 forwarding.
+- [x] Firewall: [setup/nftables.conf](setup/nftables.conf) → `/etc/nftables.conf`, `nftables.service` enabled.
+      Default drop inbound; SSH (22) and HTTP (80) from private addresses only, plus ICMP, DHCP and mDNS.
+      Covers IPv6 too, which matters because the Pi has public IPv6 addresses.
+- [x] Fixed IP for the Pi's Ethernet, set on the AT&T gateway (Home Network → IP Allocation)
+- [x] `krakos` in `dialout` and `audio` groups (already set by Imager)
+- [x] `git` installed, repo cloned to `/opt/led_strips` (owned by `krakos`)
+- [x] GitHub SSH key (`~/.ssh/id_ed25519`); GitHub's host key checked against its published fingerprint;
+      `origin` switched to `git@github.com:rakoskr6/led_strips.git`
+- [x] Wi-Fi off: saved connection deleted (`nmcli`), radio off, Wi-Fi removed from Imager's
+      first-boot `/boot/firmware/network-config` (it held the password in plain text),
+      `dtoverlay=disable-wifi` added under `[all]` in `config.txt` (applies at the next reboot;
+      the old file is `config.txt.bak`)
 
 ### 2. Audio (riskiest part)
 - [ ] `/boot/firmware/config.txt`: add `dtoverlay=audioinjector-wm8731-audio`;
       set `dtparam=audio=off`; use `dtoverlay=vc4-kms-v3d,noaudio` so HDMI audio
-      doesn't take a card slot; add `dtoverlay=disable-wifi` (Ethernet only).
+      doesn't take a card slot. (`dtoverlay=disable-wifi` is already in.)
       Drop the old `pi3-disable-bt` / `enable_uart=0`; the Arduino is on USB, not the UART.
 - [ ] Check the overlay exists: `ls /boot/firmware/overlays/audioinjector*` (**unverified** on Trixie)
 - [ ] The Audio Injector `.deb` in [README.md](README.md) is from 2017 and may not install on Trixie
@@ -198,7 +217,7 @@ cd /opt/led_strips && venv/bin/python -m unittest discover -s tests -v
       default `output_buffering = 4096`. Keep it, or move the logic above the HTML.
 - [ ] Nothing in the PHP is known to break on 8.4, but test every page
 
-### 6. Going public (last)
+### 6. Going public (last; deferred, no ports forwarded yet)
 - [ ] Domain on Cloudflare; `cloudflared` tunnel to `http://localhost:80`
 - [ ] Login in front of the whole site (Cloudflare Access, or Apache basic auth over HTTPS)
 - [ ] From a phone on cellular: login required, `/.git/` blocked, no open ports on the home IP
