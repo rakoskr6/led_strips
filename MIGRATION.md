@@ -20,7 +20,8 @@ details are deliberately left out. They live in `network.cfg` and on the old car
   Arduino (no LEDs attached). Watching the lights and the Pixelblazes (off for now) moved to step 5a.
 - Step 4 done: the lights run as `led-strips.service` (systemd), enabled at boot.
 - Step 5 done: Apache + PHP serve the site to the home network; actions are POST + CSRF token
-  and start/stop goes through systemd. Browser check from another device is in step 5a.
+  and start/stop goes through systemd. Checked from a browser on another device.
+- **Next:** step 5a, the hands-on checks (needs someone at the Pi).
 - **Deferred:** everything internet-facing (step 6). No router ports are forwarded.
 
 ## Old system at a glance
@@ -252,7 +253,7 @@ The PHP ([christmas_led_site `369945b`](https://github.com/rakoskr6/christmas_le
 - [x] Tested with `curl` on the Pi: every page 200 with no PHP warnings, `/nope` → 404,
       all refusals, all three modes change `config.json`, volume sets `amixer`,
       start/stop drive the service, nothing in the error log
-- [ ] Try it from a phone or PC browser on the home network (step 5a)
+- [x] Works from a browser on another device on the home network
 
 Left as they were (not part of the migration):
 - The Options page's Brightness slider and Pattern / Colour buttons are mock-ups that do nothing.
@@ -274,8 +275,6 @@ Left as they were (not part of the migration):
       first LEDs the right colour, both Pixelblazes, audio response, image mode
 - [ ] Compare `config.json` with the old Pi's live copy (on the old card at
       `/home/pi/led_strips/config.json`) and carry over any settings worth keeping
-- [ ] The website from a phone or PC on the home network: every page, Start/Stop, the three
-      modes, the volume slider
 - [ ] Then merge `python3-conversion` into `master`
 
 ### 6. Going public (last; deferred, no ports forwarded yet)
