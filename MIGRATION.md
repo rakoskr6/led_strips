@@ -199,39 +199,11 @@ The checks that need someone watching the lights are in step 5a. Merge
 
 ### 4. Run the lights as a service (done 2026-11-23)
 
-**What this is.** On the old Pi, the lights were started by a cron `@reboot` line
-running `startup.sh`, and the website started and stopped them by running scripts and
-`kill`. Nothing watched the program: if it crashed, the lights stayed off until someone
-noticed.
-
-Now **systemd** runs it. systemd is the program that starts everything else on the Pi
-at boot (SSH, networking, the firewall). A *service* is a small text file telling
-systemd how to run one program. Ours is
-[setup/led-strips.service](setup/led-strips.service), copied to
-`/etc/systemd/system/led-strips.service`. It says:
-
-- run `venv/bin/python led_interface.py` in `/opt/led_strips`, as `krakos` (not root);
-- start it at every boot, after the sound card and network are ready;
-- if it crashes or the Arduino is unplugged, start it again 5 s later, and keep trying;
-  but if someone *stops* it on purpose, leave it stopped;
-- keep it away from home folders and from changing system files.
-
-Its output goes to the system log (the "journal") instead of the screen.
-
-**Everyday commands**
-
-| To | Run |
-|---|---|
-| See if it's running | `systemctl status led-strips` |
-| Stop / start / restart | `sudo systemctl stop led-strips` (or `start`, `restart`) |
-| Watch its log live | `journalctl -u led-strips -f` (Ctrl+C to quit) |
-| See the log since boot | `journalctl -u led-strips -b` |
-| Don't start it at boot | `sudo systemctl disable led-strips` (`enable` to undo) |
-| After editing the service file | copy it to `/etc/systemd/system/`, then `sudo systemctl daemon-reload` and `restart` |
-
-Only one copy can use the Arduino, so stop the service before running `led_solid.py`
-or `led_interface.py` by hand. [startup.sh](startup.sh) and [start_from_server.sh](start_from_server.sh)
-are now only for running by hand.
+The lights now run as a systemd service instead of being started by cron and the website.
+The service starts them at boot and restarts them 5 s after a crash, but leaves them
+stopped after a deliberate `systemctl stop`. **What that means, everyday commands, and
+troubleshooting are in [setup/README.md](setup/README.md).** The unit file is
+[setup/led-strips.service](setup/led-strips.service), installed to `/etc/systemd/system/`.
 
 **Checked:**
 - [x] No crontab lines to remove (none for `krakos` or root on the new Pi)
