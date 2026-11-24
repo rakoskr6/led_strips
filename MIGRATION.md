@@ -14,7 +14,8 @@ details are deliberately left out. They live in `network.cfg` and on the old car
   cloned to `/opt/led_strips` on `python3-conversion`, `network.cfg` copied over,
   SSH key login working.
 - Step 1 (base system) done with [setup/base-system.sh](setup/base-system.sh), including a fixed IP and Wi-Fi off.
-- Step 2 (audio): `config.txt` and `/etc/asound.conf` set; waiting on a reboot to test the card.
+- Step 2 (audio) done remotely: card detected, mixer restored, capture works. The line-in test with
+  real audio and the reboot check moved to step 5a, for when someone is at the Pi.
 - Website committed to `christmas_led_site`; Apache is not installed yet.
 - **Deferred:** everything internet-facing (step 6). No router ports are forwarded.
 
@@ -156,15 +157,18 @@ Done before the reboot:
       (line-in, what the old Pi restored at boot) and `asound.state.MIC.thru.test`
 - [x] `alsa-utils` installed (Lite includes it)
 
-After `sudo reboot`:
-- [ ] `aplay -l` / `arecord -l` show only the Audio Injector, id `audioinjectorpi`
-- [ ] Mixer: `sudo alsactl --file /opt/led_strips/setup/alsa/asound.state.RCA.thru.test restore`,
-      then `sudo alsactl store` so alsa-utils restores it at every boot
-- [ ] `amixer sget 'Capture'` works; [website_get_volume.sh](website_get_volume.sh) parses its output
-- [ ] Line-in capture works at 32 kHz, 2 channels
-      (`AUDIO_RATE` / `AUDIO_CHANNELS`, [led_interface.py:60](led_interface.py:60))
-- [ ] Reboot again and check the mixer settings survived
-- [ ] Install JACK only if the old system really used it (likely not)
+After the reboot (2026-11-23):
+- [x] `aplay -l` / `arecord -l` show only the Audio Injector, id `audioinjectorpi`; `wlan0` gone
+- [x] Mixer: `sudo alsactl --file /opt/led_strips/setup/alsa/asound.state.RCA.thru.test restore 0`,
+      then `sudo alsactl store 0`. Input Mux is `Line In`, Capture 23/31 (74%).
+      The `failed to import hw:0 use case configuration` message is harmless (no UCM profile for this card).
+- [x] `amixer sget 'Capture'` works; [website_get_volume.sh](website_get_volume.sh) reads 74 and
+      [website_set_volume.sh](website_set_volume.sh) sets it (50 reads back as 52: the control has 31 steps)
+- [x] Capture at 32 kHz, 2 channels, S16 works, and so does full duplex (record + play at once,
+      as `led_interface.py` does). The input was silent, so the line-in path itself is still untested (step 5a).
+- JACK not installed; nothing needs it so far.
+
+The remaining audio checks need someone at the Pi and are in step 5a.
 
 ### 3. LED code on the hardware
 ```bash
@@ -219,6 +223,15 @@ cd /opt/led_strips && venv/bin/python -m unittest discover -s tests -v
 - [ ] Redirects use `header()` after HTML has been sent, which relies on PHP's
       default `output_buffering = 4096`. Keep it, or move the logic above the HTML.
 - [ ] Nothing in the PHP is known to break on 8.4, but test every page
+
+### 5a. Hands-on checks (deferred until someone is at the Pi)
+- [ ] Line-in with real audio: play music into the RCA input and record
+      (`arecord -D default -f S16_LE -r 32000 -c 2 -d 5 /tmp/test.wav`); expect clearly more than silence
+      on both channels. Compare the lights' response with the old Pi and adjust Capture if needed
+      (then `sudo alsactl store 0`).
+- [ ] `sudo reboot`, then check `amixer sget 'Capture'` and `amixer sget 'Input Mux'` still read
+      74% / `Line In` (alsa-utils restoring `/var/lib/alsa/asound.state`). Can be done remotely.
+- [ ] Install JACK only if the lights turn out to need it (not expected)
 
 ### 6. Going public (last; deferred, no ports forwarded yet)
 - [ ] Domain on Cloudflare; `cloudflared` tunnel to `http://localhost:80`
