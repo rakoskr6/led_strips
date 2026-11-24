@@ -72,14 +72,9 @@ but **no unit file is in the repo**. If one already exists on the new Pi, commit
 - This repo: clone it on the Pi and check out `python3-conversion` (merge to `master`
   once it runs on the hardware). The old Pi's copy matched `master` apart from `config.json`.
 - Website: [christmas_led_site](https://github.com/rakoskr6/christmas_led_site).
-  **The GitHub copy is stale** (3 commits, Dec 2020). The live site on the old Pi
-  is much newer and was never committed. The Pi's web root had been re-initialised
-  with no commits. Missing from GitHub: `status.php`, `smallfooter.php`, `start/`,
-  `options/`, `lights_all/`, `lights_pattern/`, `lights_tree/`,
-  `assets/css/theme.min.css`, `assets/dark-bootstrap/`, and newer `index.php`,
-  `header.php`, `footer.php`, `music/`, `patterns/`, `custom.css`,
-  `landing-page.css`. **First job:** commit the old Pi's web root on top of the
-  GitHub history and push it.
+  `master` now holds the live site from the old Pi (it had never been committed;
+  GitHub only had a Dec 2020 version), with its paths already pointing at
+  `/opt/led_strips`.
 
 **Not in git, copy from the old card/backup**
 - `~/led_strips/network.cfg` (Pixelblaze addresses; gitignored; format in [README.md](README.md))
@@ -181,12 +176,12 @@ cd /opt/led_strips && venv/bin/python -m unittest discover -s tests -v
 - [ ] Volume: `www-data` in the `audio` group; PHP checks for an integer 0–100 before calling the volume script
 
 ### 5. Website on Apache 2.4 / PHP 8.4
-- [ ] Commit the old web root to `christmas_led_site` first (see above), then clone it on the Pi
+- [x] Old web root committed to `christmas_led_site` (`master`), line endings normalised to LF
+- [ ] Clone it on the Pi to `/var/www/christmas_led_site` and point Apache's `DocumentRoot` there
 - [ ] `sudo apt install apache2 libapache2-mod-php`; keep the default `www-data` user
 - [ ] Keep `.git` out of the served directory, or block it (`RedirectMatch 404 /\.git`)
-- [ ] Replace every `/home/pi/led_strips/` with `/opt/led_strips/` in the PHP: `status.php`,
-      `options/index.php`, `options/volume.php`, `lights_all/`, `lights_pattern/`, `lights_tree/`
-      and `start/index.php`
+- [x] PHP paths changed from `/home/pi/led_strips/` to `/opt/led_strips/` (`status.php`,
+      `options/`, `lights_*/`, `start/index.php`)
 - [ ] `status.php`: allow a few seconds of slack:
       it says "Alive" only if the heartbeat is ≤1 s old, and the heartbeat is now written
       once a second, so it can flicker to "Dead".
