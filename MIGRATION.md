@@ -19,7 +19,8 @@ details are deliberately left out. They live in `network.cfg` and on the old car
 - Step 3 (LED code) done remotely: venv built, tests pass, `led_interface.py` runs against the
   Arduino (no LEDs attached). Watching the lights and the Pixelblazes (off for now) moved to step 5a.
 - Step 4 done: the lights run as `led-strips.service` (systemd), enabled at boot.
-- Website committed to `christmas_led_site`; Apache is not installed yet.
+- Step 5 done: Apache + PHP serve the site to the home network; actions are POST + CSRF token
+  and start/stop goes through systemd. Browser check from another device is in step 5a.
 - **Deferred:** everything internet-facing (step 6). No router ports are forwarded.
 
 ## Old system at a glance
@@ -214,47 +215,49 @@ troubleshooting are in [setup/README.md](setup/README.md).** The unit file is
 - [x] About 30% of one CPU core and 100 MB of memory on the Pi 3; 46 °C
 - [ ] Starts on its own after a reboot (checked with the reboot in step 5a)
 
-### 5. Website on Apache 2.4 / PHP 8.4
-Install Apache first: it creates the `www-data` user the website runs as, which the
-access rules below need.
+### 5. Website on Apache 2.4 / PHP 8.4 (done 2026-11-23)
+Set up by [setup/install-website.sh](setup/install-website.sh); how it works and everyday
+commands are in [setup/README.md](setup/README.md#the-website-apache).
 
-- [ ] `sudo apt install apache2 libapache2-mod-php`; keep the default `www-data` user
-- [x] Old web root committed to `christmas_led_site` (`master`), line endings normalised to LF
-- [ ] Clone it on the Pi to `/var/www/christmas_led_site` and point Apache's `DocumentRoot` there
-- [ ] Keep `.git` out of the served directory, or block it (`RedirectMatch 404 /\.git`)
+Server (Apache 2.4.71, PHP 8.4.28):
+- [x] `apache2` + `libapache2-mod-php` installed; Apache runs as `www-data`
+- [x] Site cloned (as `krakos`) to `/var/www/christmas_led_site`, served by
+      [setup/apache/led-site.conf](setup/apache/led-site.conf); Debian's default site disabled
+- [x] `.git`, `README.md`, `.py` files and `lib.php` return 404; `autoindex` and `status`
+      modules disabled; Apache and PHP versions hidden; session cookie `HttpOnly`, `SameSite=Strict`
 
 What the website may do with the lights:
-- [ ] Let `www-data` read `status.log` and write `config.json`, and nothing else.
-      Everything else stays owned by `krakos` and read-only to the website:
-      ```bash
-      sudo chgrp www-data /opt/led_strips /opt/led_strips/config.json
-      sudo chmod 2755 /opt/led_strips        # setgid: files replaced here keep group www-data
-      sudo chmod 664 /opt/led_strips/config.json
-      ```
-      `www-data` can't create files in the folder, so [set_config.py](set_config.py) falls back to
-      writing `config.json` in place when the website runs it. That's expected.
-- [ ] sudoers rule (`visudo -f /etc/sudoers.d/led-strips`) so `www-data` can only run
+- [x] `www-data` can read `status.log` and write `config.json`, and can't change anything
+      else in `/opt/led_strips` (folder and `config.json` in group `www-data`, folder setgid).
+      It can't create files there, so [set_config.py](set_config.py) writes `config.json`
+      in place when the website runs it. That's expected.
+- [x] `/etc/sudoers.d/led-strips`: `www-data` may run only
       `systemctl start|stop led-strips.service`
-- [ ] Volume: `www-data` in the `audio` group; PHP checks for an integer 0–100 before calling the volume script
+- [x] `www-data` in the `audio` group, for the volume scripts
 
-The PHP itself:
-- [x] PHP paths changed from `/home/pi/led_strips/` to `/opt/led_strips/` (`status.php`,
-      `options/`, `lights_*/`, `start/index.php`)
-- [ ] `status.php`: allow a few seconds of slack:
-      it says "Alive" only if the heartbeat is ≤1 s old, and the heartbeat is now written
-      once a second, so it can flicker to "Dead".
-- [ ] `start/index.php` → `sudo systemctl start|stop led-strips.service` instead of `kill` /
-      `start_from_server.sh` (a second copy now exits anyway, because the serial port is exclusive)
-- [ ] Turn the actions (start/stop, mode, volume) into POST requests with a CSRF token;
-      today they're `$.get(...)` calls
-- [ ] Stop printing the pid in `smallfooter.php`
-- [ ] Remove dead bits: `start/start.py`, `patterns/patterns.py`, the `python3 music.py` /
-      `python3 patterns.py` calls (the scripts don't exist or are empty); the missing
-      `assets/img/banner-bg.jpg`; footer links to `/ieee/` and `/docs/resume.pdf`
-- [ ] Disable `mod_status` and `autoindex` if unused
-- [ ] Redirects use `header()` after HTML has been sent, which relies on PHP's
-      default `output_buffering = 4096`. Keep it, or move the logic above the HTML.
-- [ ] Nothing in the PHP is known to break on 8.4, but test every page
+The PHP ([christmas_led_site `369945b`](https://github.com/rakoskr6/christmas_led_site)):
+- [x] Paths point at `/opt/led_strips/`
+- [x] New `lib.php`: session + CSRF token, status, running commands without a shell.
+      "Alive" now allows 5 s of slack (was 1 s, which flickered to "Dead").
+- [x] Start/stop uses `sudo systemctl start|stop led-strips.service` and asks for
+      start or stop explicitly, instead of toggling with `kill` / `start_from_server.sh`
+- [x] All actions (start/stop, modes, volume) are POSTs with the CSRF token; GET → 405,
+      bad or missing token → 403. Volume must be a whole number 0–100.
+- [x] Mode buttons post and show the result instead of navigating away
+- [x] Footer shows "Lights: Alive/Dead" without the pid
+- [x] Removed `start/start.py`, `patterns/patterns.py`, the `python3 music.py` /
+      `patterns.py` calls (`music/` and `patterns/` now redirect home), `status.php`,
+      the missing `banner-bg.jpg`, footer links to `/ieee/` and `/docs/resume.pdf`
+- [x] Redirects come before any HTML, so they don't rely on `output_buffering`
+- [x] Tested with `curl` on the Pi: every page 200 with no PHP warnings, `/nope` → 404,
+      all refusals, all three modes change `config.json`, volume sets `amixer`,
+      start/stop drive the service, nothing in the error log
+- [ ] Try it from a phone or PC browser on the home network (step 5a)
+
+Left as they were (not part of the migration):
+- The Options page's Brightness slider and Pattern / Colour buttons are mock-ups that do nothing.
+- `assets/dark-bootstrap/` (8.4 MB) and `assets/backup/` aren't used by any page.
+- Font Awesome and Google Fonts load from the internet.
 
 ### 5a. Hands-on checks (deferred until someone is at the Pi)
 - [ ] Line-in with real audio: play music into the RCA input and record
@@ -271,6 +274,8 @@ The PHP itself:
       first LEDs the right colour, both Pixelblazes, audio response, image mode
 - [ ] Compare `config.json` with the old Pi's live copy (on the old card at
       `/home/pi/led_strips/config.json`) and carry over any settings worth keeping
+- [ ] The website from a phone or PC on the home network: every page, Start/Stop, the three
+      modes, the volume slider
 - [ ] Then merge `python3-conversion` into `master`
 
 ### 6. Going public (last; deferred, no ports forwarded yet)

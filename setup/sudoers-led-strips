@@ -1,0 +1,3 @@
+# Installed to /etc/sudoers.d/led-strips (mode 0440) by setup/install-website.sh.
+# The website (www-data) may start and stop the lights service, and nothing else.
+www-data ALL=(root) NOPASSWD: /usr/bin/systemctl start led-strips.service, /usr/bin/systemctl stop led-strips.service

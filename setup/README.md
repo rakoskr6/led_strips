@@ -8,6 +8,11 @@ this page explains what each piece is and how to use it day to day.
 |---|---|---|
 | [led-strips.service](led-strips.service) | `/etc/systemd/system/led-strips.service` | Runs the lights at boot (see below) |
 | [base-system.sh](base-system.sh) | run once with `sudo` | Updates, SSH keys only, firewall |
+| [install-website.sh](install-website.sh) | run once with `sudo` | Apache + PHP and the website's access (see below) |
+| [apache/led-site.conf](apache/led-site.conf) | `/etc/apache2/sites-available/led-site.conf` | The website: folder, what's hidden, logs |
+| [apache/zz-led-site.conf](apache/zz-led-site.conf) | `/etc/apache2/conf-available/zz-led-site.conf` | Hides the Apache version |
+| [apache/php-led-site.ini](apache/php-led-site.ini) | `/etc/php/8.4/apache2/conf.d/99-led-site.ini` | Hides the PHP version; safer session cookie |
+| [sudoers-led-strips](sudoers-led-strips) | `/etc/sudoers.d/led-strips` | Lets the website start/stop the lights service, nothing else |
 | [sshd-10-local.conf](sshd-10-local.conf) | `/etc/ssh/sshd_config.d/10-local.conf` | SSH: keys only, no root login |
 | [nftables.conf](nftables.conf) | `/etc/nftables.conf` | Firewall: SSH and HTTP from the home network only |
 | [alsa/asound.conf](alsa/asound.conf) | `/etc/asound.conf` | Makes the Audio Injector card the default sound device |
@@ -92,6 +97,48 @@ sudo systemctl restart led-strips       # if it was already running
   once the Arduino is back.
 - **Service "inactive (dead)":** someone stopped it, or it isn't enabled. Run
   `sudo systemctl start led-strips`, and `systemctl is-enabled led-strips` to check boot.
+
+## The website (Apache)
+
+The site is [christmas_led_site](https://github.com/rakoskr6/christmas_led_site), checked
+out (as `krakos`) at `/var/www/christmas_led_site`. Apache serves it on port 80 to the home
+network only (the firewall blocks everything else). Open `http://pi.local/` or the Pi's IP.
+Apache runs PHP as the `www-data` user.
+
+**How a button works.** Each page carries a random token tied to the visitor's session.
+Buttons send a POST with that token to a small PHP file (`start/`, `lights_all/`,
+`lights_tree/`, `lights_pattern/`, `options/volume.php`), which checks it and then runs one
+command. Requests without the token are refused, so a link or another website can't work
+the lights.
+
+| Button | Runs (as `www-data`) |
+|---|---|
+| Start / Stop | `sudo systemctl start` / `stop led-strips.service` |
+| Pattern mode | `set_config.py mode static` |
+| Music mode (all / tree only) | `set_config.py wireless_music true` / `false`, then `set_config.py mode music` |
+| Volume slider | `website_set_volume.sh <0-100>` (`amixer`) |
+
+**What `www-data` is allowed to do**, set up by [install-website.sh](install-website.sh):
+- read `status.log` and write `config.json` in `/opt/led_strips` (that folder and
+  `config.json` are in group `www-data`; everything else there is read-only to it);
+- run exactly the two `systemctl` commands above with `sudo` ([sudoers-led-strips](sudoers-led-strips));
+- use the sound card's mixer (it's in the `audio` group).
+
+**Everyday:**
+
+| To | Run |
+|---|---|
+| Update the site after pushing changes | `cd /var/www/christmas_led_site && git pull` (no restart needed) |
+| See errors from the PHP | `sudo tail -f /var/log/apache2/led-site-error.log` |
+| See who visited | `sudo tail -f /var/log/apache2/led-site-access.log` |
+| Restart Apache (after changing its config) | `sudo systemctl restart apache2` |
+| Reinstall the config from this folder | `sudo bash /opt/led_strips/setup/install-website.sh` |
+
+The `.git` folder, `README.md`, `.py` files and `lib.php` are never served (404), and there
+are no folder listings.
+
+Clicking a mode button rewrites `config.json`, so `git status` in `/opt/led_strips` shows it
+as changed whenever the live settings differ from the repo. That's expected.
 
 ## Base system (SSH and firewall)
 
