@@ -13,6 +13,7 @@ this page explains what each piece is and how to use it day to day.
 | [apache/zz-led-site.conf](apache/zz-led-site.conf) | `/etc/apache2/conf-available/zz-led-site.conf` | Hides the Apache version |
 | [apache/php-led-site.ini](apache/php-led-site.ini) | `/etc/php/8.4/apache2/conf.d/99-led-site.ini` | Hides the PHP version; safer session cookie |
 | [sudoers-led-strips](sudoers-led-strips) | `/etc/sudoers.d/led-strips` | Lets the website start/stop the lights service, nothing else |
+| [ddns/](ddns/) | `/etc/systemd/system/namecheap-ddns.{service,timer}` | Keeps the SSH DNS name pointing at the home IP (see below) |
 | [sshd-10-local.conf](sshd-10-local.conf) | `/etc/ssh/sshd_config.d/10-local.conf` | SSH: keys only, no root login |
 | [nftables.conf](nftables.conf) | `/etc/nftables.conf` | Firewall: SSH and HTTP from the home network only |
 | [alsa/asound.conf](alsa/asound.conf) | `/etc/asound.conf` | Makes the Audio Injector card the default sound device |
@@ -158,6 +159,23 @@ the blocking.
 - Check the live firewall: `sudo nft list ruleset`
 - Allow another port from the home network: add it to both `tcp dport { 22, 80 }` lines
   in [nftables.conf](nftables.conf) and run the script again.
+
+## Dynamic DNS (Namecheap)
+
+The home IP can change, so a timer on the Pi tells Namecheap the current one every
+10 minutes (and a minute after boot). It keeps the SSH name (a Dynamic DNS record on
+the domain) pointing at the home IP.
+
+- Settings: `/etc/namecheap-ddns.conf` (root only; not in git, it holds the Dynamic DNS
+  password). Format: [ddns/namecheap-ddns.conf.example](ddns/namecheap-ddns.conf.example).
+- Install or reinstall: `sudo bash /opt/led_strips/setup/ddns/install-ddns.sh`
+- Last updates: `journalctl -u namecheap-ddns -n 5`
+- Next run: `systemctl list-timers namecheap-ddns.timer`
+- Update now: `sudo systemctl start namecheap-ddns`
+
+The Dynamic DNS password can only change this domain's dynamic records, not the
+Namecheap account. If it ever leaks, make a new one in Namecheap (Advanced DNS →
+Dynamic DNS) and put it in the settings file.
 
 ## Audio (ALSA)
 

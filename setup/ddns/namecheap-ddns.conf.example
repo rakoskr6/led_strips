@@ -1,0 +1,5 @@
+# /etc/namecheap-ddns.conf (owner root, mode 600). Not in git: it holds a password.
+# From Namecheap: Domain List -> Manage -> Advanced DNS -> Dynamic DNS.
+DDNS_HOST=ssh
+DDNS_DOMAIN=example.com
+DDNS_PASSWORD=

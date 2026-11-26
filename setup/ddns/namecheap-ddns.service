@@ -1,0 +1,18 @@
+# Updates the Namecheap dynamic DNS record once. Started by namecheap-ddns.timer.
+# Logs: journalctl -u namecheap-ddns
+[Unit]
+Description=Update Namecheap dynamic DNS
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/led_strips/setup/ddns/namecheap-ddns.sh
+# systemd reads the root-only settings file and passes it in; the script itself
+# runs as a throwaway user that can't read or change anything else
+LoadCredential=ddns.conf:/etc/namecheap-ddns.conf
+DynamicUser=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes

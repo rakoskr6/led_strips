@@ -1,0 +1,10 @@
+# Runs namecheap-ddns.service a minute after boot and then every 10 minutes.
+[Unit]
+Description=Update Namecheap dynamic DNS every 10 minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target

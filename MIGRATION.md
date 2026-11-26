@@ -284,18 +284,22 @@ The port and the DNS name are kept out of this public repo.
 
 On the Pi ([setup/base-system.sh](setup/base-system.sh) again, which keeps the firewall's
 120 s rollback):
-- [ ] [setup/sshd-10-local.conf](setup/sshd-10-local.conf): only `krakos` may log in;
+- [x] [setup/sshd-10-local.conf](setup/sshd-10-local.conf): only `krakos` may log in;
       `MaxAuthTries 3`, `LoginGraceTime 20`; `PerSourcePenalties` blocks addresses that
       fail, connect without logging in, or time out, for longer each time (up to 24 h).
       The home network is exempt, so you can't lock yourself out from home.
-- [ ] [setup/nftables.conf](setup/nftables.conf): SSH from any IPv4 address, at most
+- [x] [setup/nftables.conf](setup/nftables.conf): SSH from any IPv4 address, at most
       4 new connections a minute per address. IPv6 SSH stays home-only (the forward is IPv4).
-- [ ] Still keys only, no root login, automatic security updates (step 1)
+- [x] Still keys only, no root login, automatic security updates (step 1)
 
 On the router and DNS:
-- [ ] BGW320: forward the chosen external port (TCP) to the Pi's port 22
+- [x] BGW320: forward the chosen external port (TCP) to the Pi's port 22
+      (Firewall → NAT/Gaming → Custom Services)
 - [ ] A DNS name for SSH pointing at the home IP, kept up to date (dynamic DNS). Use its own
       name, because the website's name will point at Cloudflare in step 6, which can't carry SSH.
+      DNS is at Namecheap: turn on Dynamic DNS and add an "A + Dynamic DNS" record, then
+      [setup/ddns/](setup/ddns/) updates it every 10 minutes (see [setup/README.md](setup/README.md#dynamic-dns-namecheap)).
+      If DNS moves to Cloudflare in step 6, this needs redoing for Cloudflare.
 - [ ] Test from a phone on mobile data: `ssh -p <port> krakos@<name>`
 - [ ] Watch `journalctl -u ssh` for a few days: expect failed attempts from strangers, never a login
 
