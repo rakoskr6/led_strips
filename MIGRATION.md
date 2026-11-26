@@ -8,7 +8,7 @@ branch. Items marked **unverified** need checking on the Pi.
 This repo is public, so local IPs, Wi-Fi details, key names and other private
 details are deliberately left out. They live in `network.cfg` and on the old card.
 
-## Status (2026-11-23)
+## Status (2026-11-25)
 
 - New Pi: Trixie Lite, user `krakos`, packages updated, `git` installed, this repo
   cloned to `/opt/led_strips` on `python3-conversion`, `network.cfg` copied over,
@@ -21,7 +21,10 @@ details are deliberately left out. They live in `network.cfg` and on the old car
 - Step 4 done: the lights run as `led-strips.service` (systemd), enabled at boot.
 - Step 5 done: Apache + PHP serve the site to the home network; actions are POST + CSRF token
   and start/stop goes through systemd. Checked from a browser on another device.
-- **Next:** step 5a, the hands-on checks (needs someone at the Pi).
+- Step 5a (hands-on checks) mostly done: music drives the lights, the Pixelblazes work, and the
+  shifted-colours / flicker bug on the Arduino strips is fixed. **Left:** a reboot, a look at the
+  lights with music and in image mode after the fix, comparing `config.json` with the old card,
+  then merging to `master`. See step 5a and "After the migration".
 - Step 5b done: SSH reachable from the internet on port 22 by key (checked from a phone on
   mobile data), with rate limits and penalties; dynamic DNS keeps the name current.
 - **Deferred:** the website on the internet (step 6).
@@ -262,19 +265,40 @@ Left as they were (not part of the migration):
 - `assets/dark-bootstrap/` (8.4 MB) and `assets/backup/` aren't used by any page.
 - Font Awesome and Google Fonts load from the internet.
 
-### 5a. Hands-on checks (deferred until someone is at the Pi)
-- [ ] Line-in with real audio: play music into the RCA input and record
-      (`arecord -D default -f S16_LE -r 32000 -c 2 -d 5 /tmp/test.wav`); expect clearly more than silence
-      on both channels. Compare the lights' response with the old Pi and adjust Capture if needed
-      (then `sudo alsactl store 0`).
-- [ ] `sudo reboot`, then check `amixer sget 'Capture'` and `amixer sget 'Input Mux'` still read
-      74% / `Line In` (alsa-utils restoring `/var/lib/alsa/asound.state`), and that
-      `systemctl status led-strips` shows it started on its own. Can be done remotely.
-- [ ] Install JACK only if the lights turn out to need it (not expected)
-- [ ] Pixelblazes on and reachable at the addresses in `network.cfg` (IP reservations on the gateway)
-- [ ] LEDs plugged into the Arduino; `venv/bin/python led_solid.py` fades them blue, green, red
-- [ ] Run the lights (the service from step 4, or `venv/bin/python led_interface.py` by hand) and check:
-      first LEDs the right colour, both Pixelblazes, audio response, image mode
+### 5a. Hands-on checks (2026-11-25)
+- [x] Line-in with real music: recorded at 32 kHz stereo, both channels well above silence
+      (about 20 dB above it, peaks around -43 dBFS, no clipping), and the lights follow the music.
+      The level is low but doesn't need fixing: the code scales brightness between the quietest
+      and loudest bass of the last ~2 s, so only the gap above the hiss matters. A louder source
+      or a higher Capture value just gives it more headroom.
+- [x] Pixelblazes on, connected, and following the music
+- [x] Arduino strips (two strands connected): steady all-red test frames show red on every LED,
+      after the fix below
+- [x] **Bug found and fixed (`fe37a0b`): shifted colours and flicker on the Arduino strips.**
+      To realign the Arduino at startup the Pi sends a burst of 1,501 one-byte "palette"
+      commands. Each one is a full redraw (~18 ms), and the Arduino queues ~63 more while it
+      draws, so it keeps redrawing for over a second. The Pi waited only 0.1 s, so the first frame
+      lost its first bytes and every frame after it was counted from the wrong byte: red showed as
+      blue or green, the first LEDs differed again, and a dim colour value of 1 or 2 landing where a
+      command byte was expected made the strip flash. `RESYNC_SETTLE` is now 2 s. A simulation of
+      the Arduino's receive loop and a test on the strips agree: every frame stays in step at the
+      normal 20 ms gap. Startup takes 2 s longer.
+- [x] Image mode: all 27 files in `images/` load on the Pi 3 (at most 129 MB); turning
+      `load_image` on in the running service loads the GIF with no errors. Big GIFs take a while
+      (`dvd_large.gif` 15.6 s, `triangle.gif` 6.5 s) and the lights pause while one loads; that's
+      how it always worked (see "After the migration"). Only 279 of the 500 LEDs are in `map.py`,
+      so the rest stay dark in image mode.
+- [x] Everything a reboot needs is in place: `led-strips`, `apache2`, `nftables`, `ssh`,
+      `namecheap-ddns.timer` and `unattended-upgrades` enabled; `/var/lib/alsa/asound.state` selects
+      `Line In`, and alsa-utils saves the live mixer at shutdown and restores it at boot;
+      `config.txt` has the sound-card and Wi-Fi overlays; no failed units.
+- [ ] Reboot for real (`sudo reboot`), then check `systemctl status led-strips` started on its own,
+      `amixer sget 'Input Mux'` reads `Line In`, and the website shows "Alive". Not done
+      remotely because rebooting ends the Claude Code session running on the Pi.
+- [ ] Watch the lights with music, and in image mode, now that the fix is in
+      (`./set_config.py load_image true`, then `false` to go back)
+- [x] JACK: not needed (nothing uses it, the lights work without it)
+- [ ] `led_solid.py`: optional now (the red test covered the strips). Stop the service first.
 - [ ] Compare `config.json` with the old Pi's live copy (on the old card at
       `/home/pi/led_strips/config.json`) and carry over any settings worth keeping
 - [ ] Then merge `python3-conversion` into `master`
@@ -312,7 +336,27 @@ On the router and DNS:
 - [ ] From a phone on cellular: login required, `/.git/` blocked, only the SSH port open on the home IP
 - [ ] SSH is the one other open port (step 5b); nothing else should answer on the home IP
 
+## After the migration (optional improvements)
+Not needed for the lights to work; roughly in order of value.
+- **Back up the SD card** once 5a is finished (a full image, e.g. with Raspberry Pi Imager or
+  `dd` from another machine). A dead card then means a short restore instead of this whole list.
+- **Turn off Bluetooth** (`dtoverlay=disable-bt` in `config.txt`, `sudo systemctl disable --now
+  bluetooth`): unused, and the last wireless way in. Also unused: `wpa_supplicant` (no Wi-Fi) and
+  `cloud-init` (first-boot setup).
+- **Make the Arduino link self-correcting.** It still finds frames only by counting bytes, so any
+  lost byte (a USB hiccup, a serial timeout) leaves it out of step until the next resync. A start
+  marker on each frame, or the Arduino answering "ready" after each `show()`, would recover in one
+  frame and could replace the 2 s resync wait. Needs the Arduino reflashed (`arduino_code/`).
+- **Load images without pausing the lights:** load in a background thread, or shrink the big
+  GIFs. The website would also stop showing "Dead" during a long load.
+- **Write `status.log` to memory** (`/run`) instead of the SD card: it's rewritten every second.
+- **Replace the 2048-bit RSA SSH key** (`rsa-key-20261123`) with an Ed25519 one when convenient.
+- **Website:** the Options page's Brightness slider and Pattern/Colour buttons do nothing yet;
+  image mode has no button; `assets/dark-bootstrap/` (8.4 MB) and `assets/backup/` are unused.
+- **Tidy `network.cfg`:** its `[phue]` section is unused since Hue support was removed.
+
 ## Open questions
 - Who should be able to control the lights: only invited people, or anyone who visits?
-- Is there a domain already, and is moving its DNS to Cloudflare OK?
+- The domain's DNS is at Namecheap (dynamic DNS for SSH set up in step 5b). Is moving it to
+  Cloudflare for step 6 OK? If so, the dynamic DNS needs redoing for Cloudflare.
 - What did the old crontab and sudoers actually contain, and was JACK running?

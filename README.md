@@ -21,8 +21,13 @@ network can follow along.
 | `pixelblaze.js` | Pattern that runs on the Pixelblazes |
 | `led_solid.py` | Hardware test that fades the whole strip |
 | `website_*_volume.sh` | Get and set the input volume (used by the website) |
+| `setup/` | Everything else the Pi needs: firewall, SSH, sound card, the systemd service, the website's Apache config, dynamic DNS. See [setup/README.md](setup/README.md) |
 
 ## Setup (Raspberry Pi OS, Python 3)
+
+This is the short version. [MIGRATION.md](MIGRATION.md) has the full, checked
+list from the last rebuild, and [setup/README.md](setup/README.md) explains each
+piece and the everyday commands.
 
 The code lives in `/opt/led_strips`, so it doesn't depend on the login name and
 the website can reach it:
@@ -40,11 +45,10 @@ sudo apt install python3-venv python3-numpy python3-scipy python3-pil python3-se
 python3 -m venv --system-site-packages /opt/led_strips/venv
 ```
 
-Audio Injector drivers: https://github.com/Audio-Injector/stereo-and-zero
-
-```sh
-sudo dpkg -i audio.injector.scripts_0.1-1_all.deb
-```
+Sound card: the Audio Injector's overlay ships with Raspberry Pi OS, so the old
+`.deb` isn't needed. Add `dtoverlay=audioinjector-wm8731-audio` (and
+`dtparam=audio=off`) to `/boot/firmware/config.txt`, then load the mixer
+settings from [setup/alsa/](setup/alsa/) (see setup/README.md).
 
 `network.cfg` looks like this (one section per Pixelblaze):
 
@@ -58,12 +62,19 @@ enabled = false
 address = 192.168.1.51:81
 ```
 
-Run it from this folder (systemd runs it with
-`WorkingDirectory=/opt/led_strips`):
+systemd runs it at boot as `led-strips.service`
+([setup/led-strips.service](setup/led-strips.service)):
 
 ```sh
-cd /opt/led_strips
-venv/bin/python led_interface.py
+systemctl status led-strips          # is it running?
+journalctl -u led-strips -f          # its log
+```
+
+To run it by hand, stop the service first (only one program can use the Arduino):
+
+```sh
+sudo systemctl stop led-strips
+cd /opt/led_strips && venv/bin/python led_interface.py
 ```
 
 ## Tests
