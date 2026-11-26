@@ -173,6 +173,13 @@ the domain) pointing at the home IP.
 - Next run: `systemctl list-timers namecheap-ddns.timer`
 - Update now: `sudo systemctl start namecheap-ddns`
 
+Paste only the password itself: copying it from Namecheap's page can bring the word
+"Refresh" (the button next to it) along, and the script then refuses the value.
+
+Inside the house, the AT&T gateway's own DNS doesn't return the home IP for this name
+(it answered `127.0.0.0`), so use `pi.local` or the Pi's local IP at home and the DNS name
+away from home. To check what the internet sees: `dig +short <name> @dns1.registrar-servers.com`.
+
 The Dynamic DNS password can only change this domain's dynamic records, not the
 Namecheap account. If it ever leaks, make a new one in Namecheap (Advanced DNS →
 Dynamic DNS) and put it in the settings file.

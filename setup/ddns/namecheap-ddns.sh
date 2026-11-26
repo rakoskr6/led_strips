@@ -7,12 +7,23 @@ set -eu
 
 conf="${CREDENTIALS_DIRECTORY:+$CREDENTIALS_DIRECTORY/ddns.conf}"
 conf="${conf:-/etc/namecheap-ddns.conf}"
-DDNS_HOST= DDNS_DOMAIN= DDNS_PASSWORD=
-. "$conf"
+# Read KEY=value lines as plain text (the file is never run as shell code)
+setting() { sed -n "s/^$1=//p" "$conf" | tail -n 1 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'; }
+DDNS_HOST=$(setting DDNS_HOST)
+DDNS_DOMAIN=$(setting DDNS_DOMAIN)
+DDNS_PASSWORD=$(setting DDNS_PASSWORD)
 if [ -z "$DDNS_HOST" ] || [ -z "$DDNS_DOMAIN" ] || [ -z "$DDNS_PASSWORD" ]; then
     echo "Fill in DDNS_HOST, DDNS_DOMAIN and DDNS_PASSWORD in /etc/namecheap-ddns.conf" >&2
     exit 1
 fi
+for value in "$DDNS_HOST" "$DDNS_DOMAIN" "$DDNS_PASSWORD"; do
+    case "$value" in
+        *[!A-Za-z0-9.@*-]*)
+            echo "A value in /etc/namecheap-ddns.conf has a space or odd character" \
+                 "(copied extra text, like the 'Refresh' button?)" >&2
+            exit 1;;
+    esac
+done
 
 # Leaving out the ip parameter makes Namecheap use the address the request comes
 # from, i.e. the router's public IPv4 address (-4: never over IPv6). The URL goes
