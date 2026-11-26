@@ -51,10 +51,16 @@ SHOW_GAP = 0.020
 SERIAL_WRITE_TIMEOUT = 1.0        # seconds; longer means the Arduino stopped reading
 # A burst of FRAME_LENGTH palette commands (0x02, each one byte long) brings the
 # Arduino back to the start of a frame wherever it was. The strip briefly shows
-# its built-in Christmas palette. RESYNC_SETTLE covers the last few palette
-# redraws it may still be doing after the burst.
+# its built-in Christmas palette. Each palette command is a full redraw
+# (~3 ms to fill + 15 ms to show), and while it fills, the Arduino queues up
+# to ~63 more commands from the burst, so it keeps redrawing for over a second
+# after the burst ends. RESYNC_SETTLE must outlast that backlog: if the first
+# frame arrives during a redraw, its first bytes are lost and every frame after
+# it is counted from the wrong byte (shifted colours, and flicker whenever a
+# dim colour value of 1 or 2 lands where a command byte is expected).
+# 0.1 s was too short (seen on the strips, Nov 2026); 2 s tested clean.
 RESYNC_BYTE = 0x02
-RESYNC_SETTLE = 0.1
+RESYNC_SETTLE = 2.0
 
 # Audio input (Audio Injector HAT), passed straight through to the speakers.
 AUDIO_CHANNELS = 2
