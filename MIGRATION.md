@@ -22,7 +22,8 @@ details are deliberately left out. They live in `network.cfg` and on the old car
 - Step 5 done: Apache + PHP serve the site to the home network; actions are POST + CSRF token
   and start/stop goes through systemd. Checked from a browser on another device.
 - **Next:** step 5a, the hands-on checks (needs someone at the Pi).
-- **Deferred:** everything internet-facing (step 6). No router ports are forwarded.
+- Step 5b (SSH from the internet) in progress.
+- **Deferred:** the website on the internet (step 6).
 
 ## Old system at a glance
 
@@ -277,11 +278,32 @@ Left as they were (not part of the migration):
       `/home/pi/led_strips/config.json`) and carry over any settings worth keeping
 - [ ] Then merge `python3-conversion` into `master`
 
+### 5b. SSH from the internet (in progress)
+Chosen over Tailscale: the router forwards one random high port to the Pi's port 22.
+The port and the DNS name are kept out of this public repo.
+
+On the Pi ([setup/base-system.sh](setup/base-system.sh) again, which keeps the firewall's
+120 s rollback):
+- [ ] [setup/sshd-10-local.conf](setup/sshd-10-local.conf): only `krakos` may log in;
+      `MaxAuthTries 3`, `LoginGraceTime 20`; `PerSourcePenalties` blocks addresses that
+      fail, connect without logging in, or time out, for longer each time (up to 24 h).
+      The home network is exempt, so you can't lock yourself out from home.
+- [ ] [setup/nftables.conf](setup/nftables.conf): SSH from any IPv4 address, at most
+      4 new connections a minute per address. IPv6 SSH stays home-only (the forward is IPv4).
+- [ ] Still keys only, no root login, automatic security updates (step 1)
+
+On the router and DNS:
+- [ ] BGW320: forward the chosen external port (TCP) to the Pi's port 22
+- [ ] A DNS name for SSH pointing at the home IP, kept up to date (dynamic DNS). Use its own
+      name, because the website's name will point at Cloudflare in step 6, which can't carry SSH.
+- [ ] Test from a phone on mobile data: `ssh -p <port> krakos@<name>`
+- [ ] Watch `journalctl -u ssh` for a few days: expect failed attempts from strangers, never a login
+
 ### 6. Going public (last; deferred, no ports forwarded yet)
 - [ ] Domain on Cloudflare; `cloudflared` tunnel to `http://localhost:80`
 - [ ] Login in front of the whole site (Cloudflare Access, or Apache basic auth over HTTPS)
-- [ ] From a phone on cellular: login required, `/.git/` blocked, no open ports on the home IP
-- [ ] Never expose SSH. Use Tailscale if remote SSH is wanted.
+- [ ] From a phone on cellular: login required, `/.git/` blocked, only the SSH port open on the home IP
+- [ ] SSH is the one other open port (step 5b); nothing else should answer on the home IP
 
 ## Open questions
 - Who should be able to control the lights: only invited people, or anyone who visits?

@@ -147,6 +147,14 @@ updates, installs the SSH and firewall files above, and enables the firewall at 
 be run again safely. Before saving the firewall, it asks you to open a *new* SSH session
 to prove you can still get in, and it rolls the rules back after 120 s if you don't confirm.
 
+SSH is open to the internet through a port forward on the router (see step 5b of
+MIGRATION.md), with three layers on top of keys-only logins: only `krakos` may log in,
+the firewall allows at most 4 new connections a minute per address, and sshd blocks
+misbehaving addresses for longer each time (up to a day). The home network is exempt from
+the blocking.
+
+- See who's knocking: `journalctl -u ssh --since today`
+- See addresses sshd is currently blocking: `sudo journalctl -u ssh --since today | grep -i penalty`
 - Check the live firewall: `sudo nft list ruleset`
 - Allow another port from the home network: add it to both `tcp dport { 22, 80 }` lines
   in [nftables.conf](nftables.conf) and run the script again.

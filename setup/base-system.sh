@@ -19,10 +19,18 @@ APT::Periodic::Unattended-Upgrade "1";
 EOF
 
 echo "== 2/4 SSH: keys only =="
-install -m 644 "$HERE/sshd-10-local.conf" /etc/ssh/sshd_config.d/10-local.conf
-sshd -t
+conf=/etc/ssh/sshd_config.d/10-local.conf
+[ -f "$conf" ] && cp -p "$conf" "$conf.prev"
+install -m 644 "$HERE/sshd-10-local.conf" "$conf"
+# A broken sshd config would stop SSH starting at the next boot, so put the old one back
+if ! sshd -t; then
+    if [ -f "$conf.prev" ]; then mv "$conf.prev" "$conf"; else rm -f "$conf"; fi
+    echo "New SSH config is invalid; kept the old one." >&2
+    exit 1
+fi
+rm -f "$conf.prev"
 systemctl reload ssh
-sshd -T | grep -E '^(passwordauthentication|kbdinteractiveauthentication|permitrootlogin|x11forwarding|pubkeyauthentication) '
+sshd -T | grep -E '^(passwordauthentication|kbdinteractiveauthentication|permitrootlogin|x11forwarding|pubkeyauthentication|allowusers|maxauthtries|logingracetime|persourcepenalties) '
 
 echo "== 3/4 Firewall =="
 nft -c -f "$HERE/nftables.conf"            # syntax check only
