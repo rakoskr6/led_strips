@@ -22,7 +22,8 @@ details are deliberately left out. They live in `network.cfg` and on the old car
 - Step 5 done: Apache + PHP serve the site to the home network; actions are POST + CSRF token
   and start/stop goes through systemd. Checked from a browser on another device.
 - **Next:** step 5a, the hands-on checks (needs someone at the Pi).
-- Step 5b (SSH from the internet) in progress.
+- Step 5b done: SSH reachable from the internet on port 22 by key (checked from a phone on
+  mobile data), with rate limits and penalties; dynamic DNS keeps the name current.
 - **Deferred:** the website on the internet (step 6).
 
 ## Old system at a glance
@@ -278,9 +279,10 @@ Left as they were (not part of the migration):
       `/home/pi/led_strips/config.json`) and carry over any settings worth keeping
 - [ ] Then merge `python3-conversion` into `master`
 
-### 5b. SSH from the internet (in progress)
-Chosen over Tailscale: the router forwards one random high port to the Pi's port 22.
-The port and the DNS name are kept out of this public repo.
+### 5b. SSH from the internet (done 2026-11-25)
+Chosen over Tailscale: the router forwards port 22 to the Pi's port 22. (A random high
+port was the plan, but plain 22 was chosen; the rate limit and penalties below are what
+keep it safe, the port number never was.) The DNS name is kept out of this public repo.
 
 On the Pi ([setup/base-system.sh](setup/base-system.sh) again, which keeps the firewall's
 120 s rollback):
@@ -293,17 +295,18 @@ On the Pi ([setup/base-system.sh](setup/base-system.sh) again, which keeps the f
 - [x] Still keys only, no root login, automatic security updates (step 1)
 
 On the router and DNS:
-- [x] BGW320: forward the chosen external port (TCP) to the Pi's port 22
-      (Firewall → NAT/Gaming → Custom Services)
-- [ ] A DNS name for SSH pointing at the home IP, kept up to date (dynamic DNS). Use its own
+- [x] BGW320: forward TCP 22 to the Pi (Firewall → NAT/Gaming). Only one device can have a
+      given port: another server's old forward of port 22 had to be removed first.
+- [x] A DNS name for SSH pointing at the home IP, kept up to date (dynamic DNS). Use its own
       name, because the website's name will point at Cloudflare in step 6, which can't carry SSH.
       DNS is at Namecheap: turn on Dynamic DNS and add an "A + Dynamic DNS" record, then
       [setup/ddns/](setup/ddns/) updates it every 10 minutes (see [setup/README.md](setup/README.md#dynamic-dns-namecheap)).
       If DNS moves to Cloudflare in step 6, this needs redoing for Cloudflare.
-- [ ] Test from a phone on mobile data: `ssh -p <port> krakos@<name>`
+- [x] Tested from a phone on mobile data (JuiceSSH, its own Ed25519 key generated on the phone)
+- Inside the house the gateway's DNS answers `127.0.0.0` for the name, so use `pi.local` at home
 - [ ] Watch `journalctl -u ssh` for a few days: expect failed attempts from strangers, never a login
 
-### 6. Going public (last; deferred, no ports forwarded yet)
+### 6. Going public (last; deferred)
 - [ ] Domain on Cloudflare; `cloudflared` tunnel to `http://localhost:80`
 - [ ] Login in front of the whole site (Cloudflare Access, or Apache basic auth over HTTPS)
 - [ ] From a phone on cellular: login required, `/.git/` blocked, only the SSH port open on the home IP
